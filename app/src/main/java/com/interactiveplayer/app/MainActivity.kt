@@ -106,7 +106,7 @@ class MainActivity : ComponentActivity() {
                     }
                     when {
                         kind != null -> startActivity(Intent(this@MainActivity, CatalogActivity::class.java).putExtra("mode", kind))
-                        label == "Busca" -> startActivity(Intent(this@MainActivity, CatalogActivity::class.java).putExtra("mode", "CHANNEL").putExtra("focusSearch", true))
+                        label == "Busca" -> startActivity(Intent(this@MainActivity, SearchActivity::class.java))
                         label == "Rádios" -> startActivity(Intent(this@MainActivity, RadioActivity::class.java))
                         label == "Placar" -> startActivity(Intent(this@MainActivity, ScoreActivity::class.java))
                         label == "Câmeras" -> startActivity(Intent(this@MainActivity, WorldCamerasActivity::class.java))
