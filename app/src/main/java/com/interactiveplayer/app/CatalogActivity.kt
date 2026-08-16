@@ -144,7 +144,12 @@ class CatalogActivity : ComponentActivity() {
                     isFocusable = true
                     setOnClickListener {
                         if (item.kind == M3uItem.Kind.CHANNEL) {
-                            startActivity(Intent(this@CatalogActivity, PlayerActivity::class.java).putExtra("url", item.url).putExtra("title", item.name))
+                            startActivity(Intent(this@CatalogActivity, ChannelDetailsActivity::class.java).apply {
+                                putExtra("name", item.name)
+                                putExtra("group", item.group)
+                                putExtra("logo", item.logo)
+                                putExtra("url", item.url)
+                            })
                         } else {
                             startActivity(Intent(this@CatalogActivity, ContentDetailsActivity::class.java).apply {
                                 putExtra("name", item.name)
