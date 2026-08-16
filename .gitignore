@@ -21,3 +21,6 @@ Thumbs.db
 # Generated reports
 captures/
 *.hprof
+
+# APK artifacts are delivered separately
+*.apk
