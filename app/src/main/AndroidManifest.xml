@@ -13,8 +13,8 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
         android:usesCleartextTraffic="true">
-        <activity
-            android:name=".WelcomeActivity"
+                <activity android:name=".SetupActivity" android:screenOrientation="landscape" />
+        <activity android:name=".WelcomeActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
             android:exported="true"
             android:screenOrientation="landscape">

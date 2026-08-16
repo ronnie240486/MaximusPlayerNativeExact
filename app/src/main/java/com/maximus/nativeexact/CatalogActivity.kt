@@ -38,6 +38,7 @@ class CatalogActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         mode = runCatching { M3uItem.Kind.valueOf(intent.getStringExtra("mode") ?: "CHANNEL") }.getOrDefault(M3uItem.Kind.CHANNEL)
         setContentView(buildCatalog())
+        if (intent.getBooleanExtra("focusSearch", false)) search.requestFocus()
         loadPlaylist()
     }
 
@@ -92,18 +93,7 @@ class CatalogActivity : ComponentActivity() {
 
     private fun loadPlaylist() {
         lifecycleScope.launch {
-            val text = withContext(Dispatchers.IO) {
-                runCatching {
-                    val server = intent.getStringExtra("server") ?: return@runCatching ""
-                    val user = intent.getStringExtra("username") ?: ""
-                    val pass = intent.getStringExtra("password") ?: ""
-                    val url = URL("$server/get.php?username=$user&password=$pass&type=m3u_plus&output=ts")
-                    (url.openConnection() as HttpURLConnection).apply { connectTimeout = 7000; readTimeout = 10000 }.run {
-                        inputStream.bufferedReader().use { it.readText() }
-                    }
-                }.getOrDefault("")
-            }
-            allItems = if (text.startsWith("#EXTM3U")) M3uParser.parse(text) else emptyList()
+            allItems = CatalogRepository.load(this@CatalogActivity)
             if (allItems.isEmpty()) {
                 status.text = "Nenhum item carregado. Configure a lista M3U nas configurações."
                 renderCategories(emptyList())
@@ -170,10 +160,26 @@ class CatalogActivity : ComponentActivity() {
                     maxLines = 2
                     setPadding(dp(6), dp(4), dp(6), dp(4))
                 }, LinearLayout.LayoutParams(-1, dp(48)))
-                row.addView(card, LinearLayout.LayoutParams(0, dp(166), 1f).apply { setMargins(0, 0, dp(8), dp(10)) })
+                val favorite = TextView(this@CatalogActivity).apply {
+                    textSize = 13f
+                    gravity = Gravity.CENTER
+                    setPadding(0, 0, 0, dp(4))
+                    isFocusable = true
+                    setOnFocusChangeListener { view, focused ->
+                        (view as TextView).setTextColor(if (focused) cyan else white)
+                    }
+                    fun refresh() { text = if (FavoriteStore.contains(this@CatalogActivity, item)) "♥ Favorito" else "♡ Favoritar" }
+                    refresh()
+                    setOnClickListener {
+                        FavoriteStore.toggle(this@CatalogActivity, item)
+                        refresh()
+                    }
+                }
+                card.addView(favorite, LinearLayout.LayoutParams(-1, dp(28)))
+                row.addView(card, LinearLayout.LayoutParams(0, dp(194), 1f).apply { setMargins(0, 0, dp(8), dp(10)) })
                 item.logo?.takeIf { it.isNotBlank() }?.let { logo -> loadPoster(logo, poster) }
             }
-            grid.addView(row, LinearLayout.LayoutParams(-1, dp(176)))
+            grid.addView(row, LinearLayout.LayoutParams(-1, dp(204)))
         }
     }
 

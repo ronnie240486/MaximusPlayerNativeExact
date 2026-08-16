@@ -18,6 +18,11 @@ class WelcomeActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (AppPreferences.credentials(this) == null) {
+            startActivity(Intent(this, SetupActivity::class.java))
+            finish()
+            return
+        }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
