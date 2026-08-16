@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="background">#0B0F1A</color>
+    <color name="surface">#161B2E</color>
+    <color name="surface_elevated">#1E2438</color>
+    <color name="surface_focused">#26344E</color>
+    <color name="accent">#4CE8F0</color>
+    <color name="accent_bright">#8EFFFF</color>
+    <color name="accent_magenta">#F04CC8</color>
+    <color name="accent_purple">#B14CF0</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#9AA3B8</color>
+    <color name="text_muted">#5C647A</color>
+    <color name="error">#F0997B</color>
+    <color name="success">#54D399</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="offline_background">#F4CC4C</color>
+    <color name="whatsapp">#25D366</color>
+    <color name="overlay_strong">#8C0B0F1A</color>
+    <color name="overlay_light">#330B0F1A</color>
+</resources>
