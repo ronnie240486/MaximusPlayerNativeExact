@@ -27,7 +27,7 @@ O APK de release é gerado em `app/build/outputs/apk/release/app-release.apk`.
 
 ## Arquitetura
 
-O projeto usa Activities e Views programáticas, sem Compose e sem layouts XML para as telas principais. O package da aplicação é `com.maximus.nativeexact`. A orientação é forçada para landscape e os componentes interativos devem manter foco navegável por D-pad.
+O projeto usa Activities e Views programáticas, sem Compose e sem layouts XML para as telas principais. O package da aplicação é `com.interactiveplayer.app`. A orientação é forçada para landscape e os componentes interativos devem manter foco navegável por D-pad.
 
 ## Proteção do repositório original
 

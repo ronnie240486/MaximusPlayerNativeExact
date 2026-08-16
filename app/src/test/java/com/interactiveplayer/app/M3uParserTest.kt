@@ -1,4 +1,4 @@
-package com.maximus.nativeexact
+package com.interactiveplayer.app
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

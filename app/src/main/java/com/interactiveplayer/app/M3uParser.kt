@@ -1,4 +1,4 @@
-package com.maximus.nativeexact
+package com.interactiveplayer.app
 
 import java.net.URLDecoder
 

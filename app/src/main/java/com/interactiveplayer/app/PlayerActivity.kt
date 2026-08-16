@@ -1,4 +1,4 @@
-package com.maximus.nativeexact
+package com.interactiveplayer.app
 
 import android.net.Uri
 import android.os.Bundle

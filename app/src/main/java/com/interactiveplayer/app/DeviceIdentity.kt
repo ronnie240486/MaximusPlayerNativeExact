@@ -1,4 +1,4 @@
-package com.maximus.nativeexact
+package com.interactiveplayer.app
 
 import android.content.Context
 import android.provider.Settings

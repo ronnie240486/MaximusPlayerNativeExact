@@ -1,4 +1,4 @@
-package com.maximus.nativeexact
+package com.interactiveplayer.app
 
 import android.graphics.Color
 import android.net.ConnectivityManager

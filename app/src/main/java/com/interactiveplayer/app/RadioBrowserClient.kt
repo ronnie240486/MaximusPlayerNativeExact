@@ -1,4 +1,4 @@
-package com.maximus.nativeexact
+package com.interactiveplayer.app
 
 import org.json.JSONArray
 import java.net.HttpURLConnection

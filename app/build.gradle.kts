@@ -4,12 +4,12 @@ plugins {
 }
 
 android {
-    namespace = "com.maximus.nativeexact"
+    namespace = "com.interactiveplayer.app"
     compileSdk = 34
     buildToolsVersion = "33.0.2"
 
     defaultConfig {
-        applicationId = "com.maximus.nativeexact"
+        applicationId = "com.interactiveplayer.app"
         minSdk = 23
         targetSdk = 34
         versionCode = 1

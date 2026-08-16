@@ -1,4 +1,4 @@
-package com.maximus.nativeexact
+package com.interactiveplayer.app
 
 import android.graphics.BitmapFactory
 import android.graphics.Color
