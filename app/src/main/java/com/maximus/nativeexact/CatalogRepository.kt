@@ -23,16 +23,15 @@ object CatalogRepository {
     }
 
     private fun fetch(context: Context): List<M3uItem> {
-        val credentials = AppPreferences.credentials(context) ?: return emptyList()
+        val session = MacSessionStore.load(context) ?: return emptyList()
+        val playlist = session.activePlaylist(context) ?: return emptyList()
         return runCatching {
-            val user = java.net.URLEncoder.encode(credentials.username, "UTF-8")
-            val pass = java.net.URLEncoder.encode(credentials.password, "UTF-8")
-            val endpoint = "${credentials.server}/get.php?username=$user&password=$pass&type=m3u_plus&output=ts"
-            val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+            val connection = (URL(playlist.url).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 7000
                 readTimeout = 15000
                 requestMethod = "GET"
                 setRequestProperty("User-Agent", "MaximusPlayer/1.0 Android")
+                setRequestProperty("Accept", "audio/x-mpegurl, application/vnd.apple.mpegurl, text/plain, */*")
             }
             val text = if (connection.responseCode in 200..299) connection.inputStream.bufferedReader().use { it.readText() } else ""
             connection.disconnect()

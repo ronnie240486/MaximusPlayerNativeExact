@@ -13,8 +13,8 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
         android:usesCleartextTraffic="true">
-                <activity android:name=".SetupActivity" android:screenOrientation="landscape" />
-        <activity android:name=".WelcomeActivity"
+        <activity
+            android:name=".MacLoginActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
             android:exported="true"
             android:screenOrientation="landscape">
@@ -24,6 +24,7 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".WelcomeActivity" android:screenOrientation="landscape" />
         <activity android:name=".FavoritesActivity" android:screenOrientation="landscape" />
         <activity android:name=".DiagnosticActivity" android:screenOrientation="landscape" />
         <activity android:name=".SettingsActivity" android:screenOrientation="landscape" />
@@ -34,6 +35,7 @@
         <activity android:name=".ScoreActivity" android:screenOrientation="landscape" />
         <activity android:name=".RadioActivity" android:screenOrientation="landscape" />
         <activity android:name=".CatalogActivity" android:screenOrientation="landscape" />
+        <activity android:name=".PlaylistsActivity" android:screenOrientation="landscape" />
         <activity android:name=".ProfilesActivity" android:screenOrientation="landscape" />
         <activity android:name=".ProfileEditActivity" android:screenOrientation="landscape" />
     </application>
