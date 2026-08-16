@@ -15,7 +15,11 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
 
 class MainActivity : ComponentActivity() {
     private val backgroundColor = Color.rgb(8, 16, 30)
@@ -171,6 +175,7 @@ class MainActivity : ComponentActivity() {
             alpha = 0.78f
         }
         hero.addView(image, FrameLayout.LayoutParams(-1, -1))
+        item?.logo?.takeIf { it.isNotBlank() }?.let { loadRemoteImage(it, image) }
         hero.addView(View(this).apply { setBackgroundColor(Color.argb(125, 5, 10, 22)) }, FrameLayout.LayoutParams(-1, -1))
         hero.addView(TextView(this).apply {
             text = if (item == null) "FILMES E SÉRIES\n\nCarregando seu catálogo...\n\nSelecione para abrir o catálogo" else "${kindLabel(item.kind).uppercase()}\n\n${item.name}\n\n${item.group}\n\n▶  ASSISTIR"
@@ -228,7 +233,22 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openItem(item: M3uItem) {
-        startActivity(Intent(this, PlayerActivity::class.java).putExtra("url", item.url).putExtra("title", item.name))
+        if (item.kind == M3uItem.Kind.CHANNEL) {
+            startActivity(Intent(this, ChannelDetailsActivity::class.java).apply {
+                putExtra("name", item.name)
+                putExtra("group", item.group)
+                putExtra("logo", item.logo)
+                putExtra("url", item.url)
+            })
+        } else {
+            startActivity(Intent(this, ContentDetailsActivity::class.java).apply {
+                putExtra("name", item.name)
+                putExtra("group", item.group)
+                putExtra("logo", item.logo)
+                putExtra("url", item.url)
+                putExtra("kind", item.kind.name)
+            })
+        }
     }
 
     private fun kindLabel(kind: M3uItem.Kind): String = when (kind) {
@@ -236,6 +256,20 @@ class MainActivity : ComponentActivity() {
         M3uItem.Kind.MOVIE -> "Filmes"
         M3uItem.Kind.SERIES -> "Séries"
         M3uItem.Kind.KIDS -> "Kids"
+    }
+
+    private fun loadRemoteImage(url: String, target: ImageView) {
+        lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.IO) {
+                runCatching {
+                    val connection = URL(url).openConnection() as HttpURLConnection
+                    connection.connectTimeout = 5000
+                    connection.readTimeout = 7000
+                    connection.inputStream.use { BitmapFactory.decodeStream(it) }
+                }.getOrNull()
+            }
+            if (bitmap != null && !isFinishing) target.setImageBitmap(bitmap)
+        }
     }
 
     private fun assetBitmap(name: String) = assets.open("original_media/$name").use { BitmapFactory.decodeStream(it) }
