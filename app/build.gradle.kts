@@ -20,6 +20,14 @@ android {
     }
 
     buildTypes {
+        create("nativeTest") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".native"
+            versionNameSuffix = "-native-test"
+            isMinifyEnabled = false
+            isDebuggable = true
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

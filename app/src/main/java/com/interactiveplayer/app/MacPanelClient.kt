@@ -62,19 +62,25 @@ object MacPanelClient {
     }.getOrDefault(emptyMap())
 
     private fun normalize(json: JSONObject, mac: String): MacSessionStore.Session {
-        val registered = json.optBoolean("mac_registered") || json.optBoolean("registered") || json.optInt("registered") == 1 || json.optBoolean("found")
-        val allowed = json.optBoolean("allowed", registered) && json.optBoolean("success", true)
+        val registered = json.optBoolean("mac_registered") || json.optBoolean("registered") || json.optInt("registered") == 1 || json.optBoolean("found") || json.optString("status").equals("ativo", true)
+        val allowed = json.optBoolean("allowed", registered) && json.optBoolean("success", true) && !json.optBoolean("blocked", false)
         val playlists = ArrayList<MacSessionStore.Playlist>()
-        val array = json.optJSONArray("playlists")
-        if (array != null) {
-            for (index in 0 until array.length()) {
-                val item = array.optJSONObject(index) ?: continue
-                val url = item.optString("url").ifBlank { item.optString("playlist_url") }
-                if (url.isNotBlank()) playlists += MacSessionStore.Playlist(item.optString("name").ifBlank { item.optString("playlist_name").ifBlank { "Playlist" } }, url, item.optString("type").ifBlank { null })
+        listOf("playlists", "lista", "listas").forEach { key -> appendPlaylistValue(json.opt(key), playlists) }
+        if (playlists.isEmpty()) appendPlaylistValue(json.opt("playlist"), playlists)
+        if (playlists.isEmpty()) {
+            listOf("playlist_url", "playlistUrl", "urlM3u8", "url_m3u8", "m3u_url", "m3u8", "m3u", "url", "link").forEach { key ->
+                val url = json.optString(key).trim()
+                if (url.isNotBlank()) appendPlaylist(url, json.optString("playlist_name").ifBlank { json.optString("nomeServer").ifBlank { "Playlist" } }, playlists)
             }
         }
-        val single = json.optString("urlM3u8")
-        if (playlists.isEmpty() && single.isNotBlank()) playlists += MacSessionStore.Playlist(json.optString("nomeServer").ifBlank { "Playlist" }, single, "m3u_plus")
+        if (playlists.isEmpty()) {
+            val server = json.optString("dns").ifBlank { json.optString("server").ifBlank { json.optString("server_url") } }.trimEnd('/')
+            val user = json.optString("username").ifBlank { json.optString("user").ifBlank { json.optString("login") } }
+            val pass = json.optString("password").ifBlank { json.optString("pass").ifBlank { json.optString("senha") } }
+            if (server.isNotBlank() && user.isNotBlank() && pass.isNotBlank()) {
+                appendPlaylist("$server/get.php?username=${encode(user)}&password=${encode(pass)}&type=m3u_plus&output=ts", json.optString("playlist_name").ifBlank { "Playlist" }, playlists)
+            }
+        }
         return MacSessionStore.Session(
             authorized = registered && allowed && playlists.isNotEmpty(),
             registered = registered,
@@ -90,6 +96,23 @@ object MacPanelClient {
             resellerWhatsapp = json.optString("reseller_whatsapp").ifBlank { null },
             message = json.optString("message").ifBlank { json.optString("mensagem").ifBlank { json.optString("error").ifBlank { null } } },
         )
+    }
+
+    private fun appendPlaylistValue(value: Any?, playlists: MutableList<MacSessionStore.Playlist>) {
+        when (value) {
+            is org.json.JSONArray -> for (index in 0 until value.length()) appendPlaylistValue(value.opt(index), playlists)
+            is JSONObject -> {
+                val url = value.optString("playlist_url").ifBlank { value.optString("url").ifBlank { value.optString("urlM3u8") } }.trim()
+                if (url.isNotBlank()) appendPlaylist(url, value.optString("playlist_name").ifBlank { value.optString("name").ifBlank { "Playlist" } }, playlists)
+            }
+            is String -> if (value.isNotBlank()) appendPlaylist(value.trim(), "Playlist", playlists)
+        }
+    }
+
+    private fun appendPlaylist(url: String, name: String, playlists: MutableList<MacSessionStore.Playlist>) {
+        if (url.startsWith("http://", true) || url.startsWith("https://", true)) {
+            if (playlists.none { it.url == url }) playlists += MacSessionStore.Playlist(name, url, "m3u_plus")
+        }
     }
 
     private fun get(url: String): String {
