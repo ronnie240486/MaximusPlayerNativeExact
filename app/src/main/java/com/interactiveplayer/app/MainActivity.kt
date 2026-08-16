@@ -79,11 +79,11 @@ class MainActivity : ComponentActivity() {
             setPadding(0, dp(12), 0, dp(10))
         }
         val tabs = listOf(
-            "⌂" to "Início", "▣" to "Canais", "▤" to "Filmes", "▥" to "Séries",
-            "▦" to "Placar", "●" to "Kids", "◉" to "Rádios", "◌" to "Câmeras",
-            "⌕" to "Busca", "∿" to "Diagnóstico", "⚙" to "Ajustes"
+            "home" to "Início", "tv" to "Canais", "film" to "Filmes", "series" to "Séries",
+            "trophy" to "Placar", "kids" to "Kids", "radio" to "Rádios", "camera" to "Câmeras",
+            "search" to "Busca", "diagnostic" to "Diagnóstico", "settings" to "Ajustes"
         )
-        tabs.forEachIndexed { index, (glyph, label) ->
+        tabs.forEachIndexed { index, (iconName, label) ->
             val item = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
@@ -117,11 +117,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
             item.addView(TextView(this).apply {
-                text = glyph
+                OriginalIcons.apply(this, iconName)
                 textSize = 22f
                 gravity = Gravity.CENTER
                 setTextColor(if (index == 0) cyan else muted)
-            }, LinearLayout.LayoutParams(-1, dp(26)))
+            }, LinearLayout.LayoutParams(-1, dp(30)))
             item.addView(TextView(this).apply {
                 text = label
                 textSize = 11f
