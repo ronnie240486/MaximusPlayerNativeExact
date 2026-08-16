@@ -36,6 +36,8 @@
         <activity android:name=".RadioActivity" android:screenOrientation="landscape" />
         <activity android:name=".CatalogActivity" android:screenOrientation="landscape" />
         <activity android:name=".PlaylistsActivity" android:screenOrientation="landscape" />
+        <activity android:name=".ContentDetailsActivity" android:screenOrientation="landscape" />
+        <activity android:name=".TrailerActivity" android:screenOrientation="landscape" />
         <activity android:name=".ProfilesActivity" android:screenOrientation="landscape" />
         <activity android:name=".ProfileEditActivity" android:screenOrientation="landscape" />
     </application>

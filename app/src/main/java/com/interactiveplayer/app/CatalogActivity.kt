@@ -143,7 +143,17 @@ class CatalogActivity : ComponentActivity() {
                     setBackgroundColor(panel)
                     isFocusable = true
                     setOnClickListener {
-                        startActivity(Intent(this@CatalogActivity, PlayerActivity::class.java).putExtra("url", item.url))
+                        if (item.kind == M3uItem.Kind.CHANNEL) {
+                            startActivity(Intent(this@CatalogActivity, PlayerActivity::class.java).putExtra("url", item.url).putExtra("title", item.name))
+                        } else {
+                            startActivity(Intent(this@CatalogActivity, ContentDetailsActivity::class.java).apply {
+                                putExtra("name", item.name)
+                                putExtra("group", item.group)
+                                putExtra("logo", item.logo)
+                                putExtra("url", item.url)
+                                putExtra("kind", item.kind.name)
+                            })
+                        }
                     }
                 }
                 val poster = ImageView(this@CatalogActivity).apply {
