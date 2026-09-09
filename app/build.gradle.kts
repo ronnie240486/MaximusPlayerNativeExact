@@ -17,6 +17,17 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
+
+        // A chave do TMDb vem do ambiente (secret TMDB_API_KEY no GitHub
+        // Actions), nunca do código-fonte. Sem ela, o app compila e roda
+        // normalmente — só não enriquece os títulos com gênero, igual ao
+        // comportamento do original quando EXPO_PUBLIC_TMDB_API_KEY está
+        // vazia.
+        buildConfigField(
+            "String",
+            "TMDB_API_KEY",
+            "\"${System.getenv("TMDB_API_KEY") ?: ""}\"",
+        )
     }
 
     buildTypes {

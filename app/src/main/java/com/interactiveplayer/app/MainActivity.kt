@@ -17,6 +17,8 @@ import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
@@ -49,6 +51,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var homeBody: LinearLayout
     private var heroIndex = 0
     private var heroItems: List<M3uItem> = emptyList()
+    private var heroHost: FrameLayout? = null
+    private var heroRotation: Job? = null
+    private var currentWeather: WeatherClient.WeatherNow? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -275,17 +280,20 @@ class MainActivity : ComponentActivity() {
         })
         bar.addView(greeting, LinearLayout.LayoutParams(0, -2, 1f))
 
-        // Pílula de relógio (o original mostra também a temperatura, que
-        // depende do serviço de clima ainda não portado para o nativo).
-        bar.addView(TextView(this).apply {
-            setText(SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()))
-            textSize = 12f
-            setTextColor(Theme.white)
-            setTypeface(Typeface.DEFAULT_BOLD)
-            gravity = Gravity.CENTER
-            background = roundRect(Theme.darkSurfaceAlt, Theme.RADIUS_PILL)
-            setPadding(dp(12), dp(5), dp(12), dp(5))
-        }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(Theme.SPACING_SM) })
+        // styles.wrapTVCompact do ClockWeather: hora + ícone + temperatura.
+        val clock = TextView(this)
+        clock.setText(currentTime())
+        clock.textSize = 12f
+        clock.setTextColor(Theme.white)
+        clock.setTypeface(Typeface.DEFAULT_BOLD)
+        clock.gravity = Gravity.CENTER
+        clock.background = roundRect(Theme.darkSurface, Theme.RADIUS_MD)
+        clock.setPadding(dp(Theme.SPACING_SM), dp(6), dp(Theme.SPACING_SM), dp(6))
+        bar.addView(
+            clock,
+            LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(Theme.SPACING_SM) }
+        )
+        startClockAndWeather(clock)
 
         // styles.micBtn: 34x34, círculo com borda ciano
         bar.addView(TextView(this).apply {
@@ -324,6 +332,41 @@ class MainActivity : ComponentActivity() {
             ?.takeIf { it.isNotBlank() }
             ?: "Eu"
 
+    private fun currentTime(): String =
+        SimpleDateFormat("HH:mm", Locale("pt", "BR")).format(Date())
+
+    /**
+     * Relógio a cada 30s e clima a cada 20 min — os mesmos intervalos do
+     * ClockWeather.tsx (`WEATHER_REFRESH_MS = 20 * 60 * 1000`).
+     */
+    private fun startClockAndWeather(clock: TextView) {
+        lifecycleScope.launch {
+            while (true) {
+                clock.setText(buildClockText())
+                delay(30_000)
+            }
+        }
+        lifecycleScope.launch {
+            while (true) {
+                val weather = withContext(Dispatchers.IO) {
+                    val location = WeatherClient.fetchLocationByIp()
+                    if (location == null) null
+                    else WeatherClient.fetchWeather(location.lat, location.lon)
+                }
+                if (weather != null) {
+                    currentWeather = weather
+                    clock.setText(buildClockText())
+                }
+                delay(20 * 60 * 1000L)
+            }
+        }
+    }
+
+    private fun buildClockText(): String {
+        val weather = currentWeather ?: return currentTime()
+        return "${currentTime()}   ${WeatherClient.weatherIcon(weather.code)} ${weather.tempC}°"
+    }
+
     // ---------------------------------------------------------------
     // Hero (styles.heroBg com aspectRatio 16/6 em paisagem)
     // ---------------------------------------------------------------
@@ -331,25 +374,46 @@ class MainActivity : ComponentActivity() {
     private fun buildHero(items: List<M3uItem>): View {
         heroItems = items
         heroIndex = 0
-        val current = items.firstOrNull()
+        heroRotation?.cancel()
 
         val contentWidth = resources.displayMetrics.widthPixels - dp(sideNavWidth) - dp(1)
         val heroHeight = contentWidth * 6 / 16      // aspectRatio: 16 / 6
 
-        val hero = FrameLayout(this).apply {
-            setBackgroundColor(Theme.darkSurface)
+        val host = FrameLayout(this).apply { setBackgroundColor(Theme.darkSurface) }
+        heroHost = host
+        host.layoutParams = LinearLayout.LayoutParams(-1, heroHeight).apply {
+            bottomMargin = dp(Theme.SPACING_LG)     // heroWrap marginBottom
         }
+        renderHero()
+
+        // "Gira sozinho a cada 7s, volta pro começo depois do último."
+        if (items.size > 1) {
+            heroRotation = lifecycleScope.launch {
+                while (true) {
+                    delay(7000)
+                    heroIndex = (heroIndex + 1) % heroItems.size
+                    renderHero()
+                }
+            }
+        }
+        return host
+    }
+
+    private fun renderHero() {
+        val host = heroHost ?: return
+        val current = heroItems.getOrNull(heroIndex)
+        host.removeAllViews()
 
         val backdrop = ImageView(this).apply {
             setImageBitmap(assetBitmap("default-bg.png"))
             scaleType = ImageView.ScaleType.CENTER_CROP
             alpha = 0.9f                            // imageStyle opacity: 0.9
         }
-        hero.addView(backdrop, FrameLayout.LayoutParams(-1, -1))
+        host.addView(backdrop, FrameLayout.LayoutParams(-1, -1))
         current?.logo?.takeIf { it.isNotBlank() }?.let { loadRemoteImage(it, backdrop) }
 
         // LinearGradient vertical: 0.10 -> 0.40 -> 0.90 de colors.black
-        hero.addView(View(this).apply {
+        host.addView(View(this).apply {
             background = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(
@@ -361,25 +425,48 @@ class MainActivity : ComponentActivity() {
         }, FrameLayout.LayoutParams(-1, -1))
 
         // LinearGradient horizontal: 0.45 -> transparente
-        hero.addView(View(this).apply {
+        host.addView(View(this).apply {
             background = GradientDrawable(
                 GradientDrawable.Orientation.LEFT_RIGHT,
                 intArrayOf(Color.argb(115, 11, 15, 26), Color.TRANSPARENT)
             )
         }, FrameLayout.LayoutParams(-1, -1))
 
-        hero.addView(
-            buildHeroContent(current, items.size),
+        host.addView(
+            buildHeroContent(current, heroItems.size, null),
             FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM)
         )
 
-        hero.layoutParams = LinearLayout.LayoutParams(-1, heroHeight).apply {
-            bottomMargin = dp(Theme.SPACING_LG)     // heroWrap marginBottom
+        // Sinopse/nota/ano/backdrop chegam depois, sem travar a pintura —
+        // igual ao useEffect do hero no home.tsx, que busca só o item que
+        // está na tela agora e guarda em cache.
+        if (current != null) {
+            val requestedIndex = heroIndex
+            lifecycleScope.launch {
+                val info = withContext(Dispatchers.IO) { XtreamInfoClient.fetch(current) }
+                if (info == null || isFinishing) return@launch
+                if (heroIndex != requestedIndex) return@launch
+                val stillThere = heroHost ?: return@launch
+                if (stillThere.childCount >= 4) {
+                    stillThere.removeViewAt(stillThere.childCount - 1)
+                    stillThere.addView(
+                        buildHeroContent(current, heroItems.size, info),
+                        FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM)
+                    )
+                }
+                info.backdrop?.takeIf { it.isNotBlank() }?.let {
+                    val image = stillThere.getChildAt(0)
+                    if (image is ImageView) loadRemoteImage(it, image)
+                }
+            }
         }
-        return hero
     }
 
-    private fun buildHeroContent(current: M3uItem?, total: Int): View {
+    private fun buildHeroContent(
+        current: M3uItem?,
+        total: Int,
+        info: XtreamInfoClient.Info?
+    ): View {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(
@@ -410,10 +497,26 @@ class MainActivity : ComponentActivity() {
             maxLines = 2
         })
 
-        // styles.heroMetaRow — pílula de qualidade
+        // styles.heroMetaRow: estrela + nota, ano, pílula de qualidade
         val metaRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+        }
+        info?.rating?.takeIf { it.isNotBlank() }?.let { rating ->
+            metaRow.addView(TextView(this).apply {
+                setText("★ $rating")
+                textSize = 12f
+                setTextColor(Theme.star)
+                setTypeface(Typeface.DEFAULT_BOLD)
+            }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(10) })
+        }
+        info?.year?.takeIf { it.isNotBlank() }?.let { year ->
+            metaRow.addView(TextView(this).apply {
+                setText(year)
+                textSize = 12f
+                setTextColor(Theme.textSecondary)
+                setTypeface(Typeface.DEFAULT_BOLD)
+            }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(10) })
         }
         metaRow.addView(TextView(this).apply {
             setText("HD")
@@ -425,10 +528,11 @@ class MainActivity : ComponentActivity() {
         })
         box.addView(metaRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
 
-        // styles.heroPlot — no nativo o catálogo só traz o grupo
-        current?.group?.takeIf { it.isNotBlank() }?.let { group ->
+        // styles.heroPlot
+        val plot = info?.plot?.takeIf { it.isNotBlank() } ?: current?.group?.takeIf { it.isNotBlank() }
+        if (plot != null) {
             box.addView(TextView(this).apply {
-                setText(group)
+                setText(plot)
                 textSize = 13f
                 setTextColor(Theme.textSecondary)
                 maxLines = 3
@@ -501,14 +605,24 @@ class MainActivity : ComponentActivity() {
             val dots = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             for (index in 0 until total) {
                 val active = index == heroIndex
-                dots.addView(View(this).apply {
-                    background = roundRect(
-                        if (active) Theme.accentCyan else Theme.whiteAlpha30,
-                        3
-                    )
-                }, LinearLayout.LayoutParams(dp(if (active) 18 else 6), dp(6)).apply {
-                    rightMargin = dp(6)
-                })
+                val dot = View(this)
+                dot.background = roundRect(
+                    if (active) Theme.accentCyan else Theme.whiteAlpha30,
+                    3
+                )
+                val position = index
+                dot.isFocusable = true
+                dot.isClickable = true
+                dot.setOnClickListener {
+                    heroIndex = position
+                    renderHero()
+                }
+                dots.addView(
+                    dot,
+                    LinearLayout.LayoutParams(dp(if (active) 18 else 6), dp(6)).apply {
+                        rightMargin = dp(6)
+                    }
+                )
             }
             box.addView(dots, LinearLayout.LayoutParams(-1, -2).apply {
                 topMargin = dp(Theme.SPACING_MD)

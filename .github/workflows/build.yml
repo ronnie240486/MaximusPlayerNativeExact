@@ -28,6 +28,8 @@ jobs:
         run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
 
       - name: Compilar o APK (debug, mais rápido pra testar)
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Guardar o APK gerado
