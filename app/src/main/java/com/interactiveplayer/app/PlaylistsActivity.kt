@@ -67,7 +67,7 @@ class PlaylistsActivity : ComponentActivity() {
                     }
                     setOnClickListener {
                         MacSessionStore.setActivePlaylistIndex(this@PlaylistsActivity, index)
-                        CatalogRepository.clear()
+                        CatalogRepository.clear(this@PlaylistsActivity)
                         finish()
                     }
                 }

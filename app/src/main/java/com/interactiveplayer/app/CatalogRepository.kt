@@ -2,6 +2,9 @@ package com.interactiveplayer.app
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -11,22 +14,42 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 
 object CatalogRepository {
+    private const val PREFS_NAME = "catalog_cache"
+    private const val CACHE_KEY = "items_json"
+
     @Volatile private var cached: List<M3uItem> = emptyList()
     @Volatile var lastMessage: String = ""
         private set
 
+    /**
+     * Stale-while-revalidate: se já tiver algo salvo em disco de uma
+     * abertura anterior, devolve isso na hora (a Home pinta instantâneo)
+     * — quem chamar `load` de novo com `force = true` depois de mostrar
+     * o cache é quem dispara a atualização de verdade em segundo plano.
+     */
     suspend fun load(context: Context, force: Boolean = false): List<M3uItem> {
         if (!force && cached.isNotEmpty()) return cached
+        if (!force) {
+            val fromDisk = readDiskCache(context)
+            if (fromDisk.isNotEmpty()) {
+                cached = fromDisk
+                return fromDisk
+            }
+        }
         val result = withContext(Dispatchers.IO) { fetch(context) }
-        if (result.isNotEmpty()) cached = result
+        if (result.isNotEmpty()) {
+            cached = result
+            writeDiskCache(context, result)
+        }
         return result
     }
 
     fun current(): List<M3uItem> = cached
 
-    fun clear() {
+    fun clear(context: Context) {
         cached = emptyList()
         lastMessage = ""
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
     }
 
     private fun fetch(context: Context): List<M3uItem> {
@@ -45,7 +68,7 @@ object CatalogRepository {
             lastMessage = "Playlist M3U carregada."
             return direct
         }
-        val xtream = fetchXtream(playlist.url)
+        val xtream = fetchXtreamParallel(playlist.url)
         if (xtream.isNotEmpty()) {
             lastMessage = "Catálogo Xtream carregado pelo painel."
             return xtream
@@ -66,7 +89,13 @@ object CatalogRepository {
         if (text.contains("#EXTINF", true) || text.contains("#EXTM3U", true)) M3uParser.parse(text) else emptyList()
     }.getOrDefault(emptyList())
 
-    private fun fetchXtream(playlistUrl: String): List<M3uItem> = runCatching {
+    /**
+     * As 6 chamadas (3 categorias + 3 listas) rodam TODAS ao mesmo tempo
+     * em vez de uma atrás da outra — antes isso somava até 6x o tempo de
+     * espera de cada chamada individual, e era a causa real da Home
+     * demorar tanto pra aparecer.
+     */
+    private fun fetchXtreamParallel(playlistUrl: String): List<M3uItem> = runCatching {
         val parsed = URL(playlistUrl)
         val params = parsed.query.orEmpty().split('&').mapNotNull { part ->
             val pieces = part.split('=', limit = 2)
@@ -75,37 +104,50 @@ object CatalogRepository {
         val username = params["username"] ?: params["user"] ?: return@runCatching emptyList()
         val password = params["password"] ?: params["pass"] ?: return@runCatching emptyList()
         val server = "${parsed.protocol}://${parsed.authority}"
-        val liveCategories = categories(server, username, password, "get_live_categories")
-        val vodCategories = categories(server, username, password, "get_vod_categories")
-        val seriesCategories = categories(server, username, password, "get_series_categories")
-        val result = ArrayList<M3uItem>()
-        val live = jsonArray(server, username, password, "get_live_streams")
-        for (index in 0 until live.length()) {
-            val item = live.optJSONObject(index) ?: continue
-            val name = item.optString("name").ifBlank { "Canal" }
-            val group = liveCategories[item.optString("category_id")] ?: "Canais"
-            val streamId = item.optString("stream_id")
-            val url = item.optString("direct_source").ifBlank { "$server/live/$username/$password/$streamId.ts" }
-            if (streamId.isNotBlank()) result += M3uItem(name, group, item.optString("stream_icon").ifBlank { null }, url, M3uItem.Kind.CHANNEL)
+
+        kotlinx.coroutines.runBlocking {
+            coroutineScope {
+                val liveCategoriesDeferred = async(Dispatchers.IO) { categories(server, username, password, "get_live_categories") }
+                val vodCategoriesDeferred = async(Dispatchers.IO) { categories(server, username, password, "get_vod_categories") }
+                val seriesCategoriesDeferred = async(Dispatchers.IO) { categories(server, username, password, "get_series_categories") }
+                val liveDeferred = async(Dispatchers.IO) { jsonArray(server, username, password, "get_live_streams") }
+                val moviesDeferred = async(Dispatchers.IO) { jsonArray(server, username, password, "get_vod_streams") }
+                val seriesDeferred = async(Dispatchers.IO) { jsonArray(server, username, password, "get_series") }
+
+                val liveCategories = liveCategoriesDeferred.await()
+                val vodCategories = vodCategoriesDeferred.await()
+                val seriesCategories = seriesCategoriesDeferred.await()
+                val live = liveDeferred.await()
+                val movies = moviesDeferred.await()
+                val series = seriesDeferred.await()
+
+                val result = ArrayList<M3uItem>()
+                for (index in 0 until live.length()) {
+                    val item = live.optJSONObject(index) ?: continue
+                    val name = item.optString("name").ifBlank { "Canal" }
+                    val group = liveCategories[item.optString("category_id")] ?: "Canais"
+                    val streamId = item.optString("stream_id")
+                    val url = item.optString("direct_source").ifBlank { "$server/live/$username/$password/$streamId.ts" }
+                    if (streamId.isNotBlank()) result += M3uItem(name, group, item.optString("stream_icon").ifBlank { null }, url, M3uItem.Kind.CHANNEL)
+                }
+                for (index in 0 until movies.length()) {
+                    val item = movies.optJSONObject(index) ?: continue
+                    val name = item.optString("name").ifBlank { "Filme" }
+                    val group = vodCategories[item.optString("category_id")] ?: "Filmes"
+                    val streamId = item.optString("stream_id")
+                    val ext = item.optString("container_extension").ifBlank { "mp4" }
+                    if (streamId.isNotBlank()) result += M3uItem(name, group, item.optString("stream_icon").ifBlank { null }, "$server/movie/$username/$password/$streamId.$ext", classifyMovie(name, group))
+                }
+                for (index in 0 until series.length()) {
+                    val item = series.optJSONObject(index) ?: continue
+                    val name = item.optString("name").ifBlank { "Série" }
+                    val group = seriesCategories[item.optString("category_id")] ?: "Séries"
+                    val seriesId = item.optString("series_id")
+                    if (seriesId.isNotBlank()) result += M3uItem(name, group, item.optString("cover").ifBlank { null }, "$server/series/$username/$password/$seriesId.mp4", classifySeries(name, group))
+                }
+                result
+            }
         }
-        val movies = jsonArray(server, username, password, "get_vod_streams")
-        for (index in 0 until movies.length()) {
-            val item = movies.optJSONObject(index) ?: continue
-            val name = item.optString("name").ifBlank { "Filme" }
-            val group = vodCategories[item.optString("category_id")] ?: "Filmes"
-            val streamId = item.optString("stream_id")
-            val ext = item.optString("container_extension").ifBlank { "mp4" }
-            if (streamId.isNotBlank()) result += M3uItem(name, group, item.optString("stream_icon").ifBlank { null }, "$server/movie/$username/$password/$streamId.$ext", classifyMovie(name, group))
-        }
-        val series = jsonArray(server, username, password, "get_series")
-        for (index in 0 until series.length()) {
-            val item = series.optJSONObject(index) ?: continue
-            val name = item.optString("name").ifBlank { "Série" }
-            val group = seriesCategories[item.optString("category_id")] ?: "Séries"
-            val seriesId = item.optString("series_id")
-            if (seriesId.isNotBlank()) result += M3uItem(name, group, item.optString("cover").ifBlank { null }, "$server/series/$username/$password/$seriesId.mp4", classifySeries(name, group))
-        }
-        result
     }.getOrDefault(emptyList())
 
     private fun classifyMovie(name: String, group: String): M3uItem.Kind {
@@ -150,4 +192,43 @@ object CatalogRepository {
     }
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
+
+    // --- cache em disco: pinta a Home instantâneo nas aberturas seguintes ---
+
+    private fun readDiskCache(context: Context): List<M3uItem> = runCatching {
+        val raw = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(CACHE_KEY, null) ?: return emptyList()
+        val array = JSONArray(raw)
+        (0 until array.length()).mapNotNull { index ->
+            val obj = array.optJSONObject(index) ?: return@mapNotNull null
+            val kind = runCatching { M3uItem.Kind.valueOf(obj.optString("kind")) }.getOrDefault(M3uItem.Kind.CHANNEL)
+            M3uItem(
+                name = obj.optString("name"),
+                group = obj.optString("group"),
+                logo = obj.optString("logo").ifBlank { null },
+                url = obj.optString("url"),
+                kind = kind,
+            )
+        }
+    }.getOrDefault(emptyList())
+
+    private fun writeDiskCache(context: Context, items: List<M3uItem>) {
+        runCatching {
+            val array = JSONArray()
+            items.forEach { item ->
+                array.put(
+                    JSONObject().apply {
+                        put("name", item.name)
+                        put("group", item.group)
+                        put("logo", item.logo ?: "")
+                        put("url", item.url)
+                        put("kind", item.kind.name)
+                    }
+                )
+            }
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(CACHE_KEY, array.toString())
+                .apply()
+        }
+    }
 }

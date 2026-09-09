@@ -33,8 +33,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContentView(buildHome())
         lifecycleScope.launch {
-            val items = CatalogRepository.load(this@MainActivity)
-            renderCatalogHome(items)
+            // Pinta com o que já tiver salvo (cache em disco/memória) na
+            // hora — só depois disso busca uma leva atualizada por trás,
+            // sem travar a tela esperando a internet responder de novo.
+            val cachedItems = CatalogRepository.load(this@MainActivity)
+            if (cachedItems.isNotEmpty()) renderCatalogHome(cachedItems)
+
+            val freshItems = CatalogRepository.load(this@MainActivity, force = true)
+            if (freshItems.isNotEmpty()) renderCatalogHome(freshItems)
         }
     }
 

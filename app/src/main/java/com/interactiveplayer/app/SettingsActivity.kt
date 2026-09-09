@@ -59,13 +59,13 @@ class SettingsActivity : ComponentActivity() {
             "Conta e perfil" -> startActivity(Intent(this, ProfilesActivity::class.java))
             "Listas do painel" -> startActivity(Intent(this, PlaylistsActivity::class.java))
             "Limpar cache do catálogo" -> {
-                CatalogRepository.clear()
+                CatalogRepository.clear(this)
                 Toast.makeText(this, "Cache do catálogo limpo.", Toast.LENGTH_SHORT).show()
             }
             "Diagnóstico" -> startActivity(Intent(this, DiagnosticActivity::class.java))
             "Sair" -> {
                 MacSessionStore.clear(this)
-                CatalogRepository.clear()
+                CatalogRepository.clear(this)
                 startActivity(Intent(this, MacLoginActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 })
