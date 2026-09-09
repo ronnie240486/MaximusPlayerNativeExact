@@ -1,0 +1,37 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Preparar o Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Preparar o Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Dar permissão de execução ao gradlew
+        run: chmod +x gradlew
+
+      - name: Rodar os testes unitários
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Compilar o APK (debug, mais rápido pra testar)
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Guardar o APK gerado
+        uses: actions/upload-artifact@v4
+        with:
+          name: maximus-native-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
