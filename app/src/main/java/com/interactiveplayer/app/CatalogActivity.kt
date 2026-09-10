@@ -1,7 +1,6 @@
 package com.interactiveplayer.app
 
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -9,6 +8,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -17,24 +17,21 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.Dispatchers
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
- * Catálogo, portado de `frontend/app/channels.tsx` (para Canais) e
- * `frontend/app/movies.tsx`/`series.tsx` (para Filmes/Séries/Kids).
+ * Catálogo (Canais/Filmes/Séries/Kids), agora com RecyclerView.
  *
- * Canais usa lista numerada (como um guia de TV): número, logo pequeno,
- * nome e coração de favorito, igual ao `ChannelRow` do original. Filmes,
- * séries e kids usam grade de pôsteres, igual à Home.
- *
- * Fica de fora desta versão: o preview ao vivo do canal em destaque
- * (`TVChannelPreview`) que o original mostra ao lado da lista — pediria
- * manter um ExoPlayer rodando atrás da tela de navegação, o que é um
- * pedaço grande por si só.
+ * A versão anterior construía TODAS as linhas/cards como Views de uma
+ * vez só, direto num LinearLayout dentro de ScrollView — com uma lista
+ * de IPTV normalmente tendo milhares de canais, isso travava a thread
+ * principal por vários segundos toda vez que a tela abria ou o filtro
+ * mudava (o que também explicava o menu lateral "lento": ele não era
+ * lento de verdade, só ficava esperando essa reconstrução gigante
+ * terminar). RecyclerView só cria e liga as views que cabem na tela.
  */
 class CatalogActivity : ComponentActivity() {
 
@@ -47,7 +44,8 @@ class CatalogActivity : ComponentActivity() {
     private var mode: M3uItem.Kind = M3uItem.Kind.CHANNEL
     private var searchQuery: String = ""
 
-    private lateinit var itemsHost: LinearLayout
+    private lateinit var recyclerView: RecyclerView
+    private lateinit var adapter: CatalogAdapter
     private lateinit var categoriesView: LinearLayout
     private lateinit var status: TextView
     private lateinit var search: EditText
@@ -94,13 +92,34 @@ class CatalogActivity : ComponentActivity() {
         categoryScroll.addView(categoriesView)
         content.addView(categoryScroll, LinearLayout.LayoutParams(dp(if (isTv) 200 else 150), -1))
 
-        val itemScroll = ScrollView(this)
-        itemsHost = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, dp(Theme.SPACING_MD), dp(Theme.SPACING_MD))
+        adapter = CatalogAdapter(
+            isChannelMode = mode == M3uItem.Kind.CHANNEL,
+            posterWidthPx = dp(posterWidth),
+            posterHeightPx = dp(posterHeight),
+            posterNameSizeSp = if (isTv) 15f else 12f,
+            onClick = { item -> openItem(item) },
+            onToggleFavorite = { item ->
+                val nowFavorite = FavoriteStore.toggle(this, item)
+                if (!nowFavorite && selectedGroup == FAVORITES) renderItems()
+                nowFavorite
+            },
+        )
+        recyclerView = RecyclerView(this).apply {
+            layoutManager = if (mode == M3uItem.Kind.CHANNEL) {
+                LinearLayoutManager(this@CatalogActivity)
+            } else {
+                val columns = maxOf(
+                    3,
+                    (resources.displayMetrics.widthPixels * 0.72).toInt() / dp(posterWidth + Theme.SPACING_SM)
+                )
+                GridLayoutManager(this@CatalogActivity, columns)
+            }
+            adapter = this@CatalogActivity.adapter
+            setPadding(dp(Theme.SPACING_MD), dp(Theme.SPACING_SM), dp(Theme.SPACING_MD), dp(Theme.SPACING_MD))
+            clipToPadding = false
+            setHasFixedSize(true)
         }
-        itemScroll.addView(itemsHost)
-        content.addView(itemScroll, LinearLayout.LayoutParams(0, -1, 1f))
+        content.addView(recyclerView, LinearLayout.LayoutParams(0, -1, 1f))
 
         root.addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
         return root
@@ -136,7 +155,7 @@ class CatalogActivity : ComponentActivity() {
             rightMargin = dp(Theme.SPACING_MD)
         })
         search = EditText(this).apply {
-            hint = "Buscar em $modeTitleLower"
+            hint = "Buscar em ${modeTitle().lowercase()}"
             textSize = 13f
             setSingleLine(true)
             setTextColor(Theme.white)
@@ -156,15 +175,12 @@ class CatalogActivity : ComponentActivity() {
         return header
     }
 
-    private val modeTitleLower get() = modeTitle().lowercase()
-
     private fun loadPlaylist() {
         lifecycleScope.launch {
             allItems = CatalogRepository.load(this@CatalogActivity)
             if (allItems.isEmpty()) {
                 status.setText("Nenhum item carregado ainda. Puxando o catálogo...")
-                val fresh = CatalogRepository.load(this@CatalogActivity, force = true)
-                allItems = fresh
+                allItems = CatalogRepository.load(this@CatalogActivity, force = true)
             }
             if (allItems.isEmpty()) {
                 status.setText("Nenhum item carregado. Confira sua lista nas configurações.")
@@ -187,7 +203,7 @@ class CatalogActivity : ComponentActivity() {
         TextView(this).apply {
             setText(label)
             textSize = 13f
-            maxLines = 1
+            maxLines = 2
             setPadding(dp(Theme.SPACING_SM), dp(10), dp(Theme.SPACING_SM), dp(10))
             refreshChipColors(this, group)
             isFocusable = true
@@ -228,104 +244,11 @@ class CatalogActivity : ComponentActivity() {
             else -> base.filter { it.group == selectedGroup }
         }.filter { searchQuery.isEmpty() || it.name.lowercase().contains(searchQuery) }
 
-        itemsHost.removeAllViews()
-        if (filtered.isEmpty()) {
-            itemsHost.addView(TextView(this).apply {
-                setText("Nenhum conteúdo encontrado")
-                textSize = 14f
-                setTextColor(Theme.textMuted)
-            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(Theme.SPACING_LG) })
-            return
-        }
-
-        if (mode == M3uItem.Kind.CHANNEL) {
-            filtered.forEachIndexed { index, item -> itemsHost.addView(channelRow(item, index)) }
-        } else {
-            val columns = maxOf(3, (resources.displayMetrics.widthPixels * 0.7).toInt() / dp(posterWidth + Theme.SPACING_SM))
-            var line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            filtered.forEachIndexed { index, item ->
-                if (index % columns == 0) {
-                    line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-                    itemsHost.addView(line, LinearLayout.LayoutParams(-1, -2).apply {
-                        bottomMargin = dp(Theme.SPACING_SM)
-                    })
-                }
-                line.addView(
-                    posterCard(item),
-                    LinearLayout.LayoutParams(dp(posterWidth), -2).apply { rightMargin = dp(Theme.SPACING_SM) }
-                )
-            }
-        }
-    }
-
-    /** Fiel ao ChannelRow do original: número, logo, nome, coração. */
-    private fun channelRow(item: M3uItem, index: Int): View {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = roundRect(Theme.darkSurface, Theme.RADIUS_SM)
-            setPadding(dp(Theme.SPACING_SM), dp(Theme.SPACING_SM), dp(Theme.SPACING_SM), dp(Theme.SPACING_SM))
-            isFocusable = true
-            isClickable = true
-            setOnClickListener { openItem(item) }
-        }
-        row.addView(TextView(this).apply {
-            setText((index + 1).toString())
-            textSize = 12f
-            setTextColor(Theme.textMuted)
-        }, LinearLayout.LayoutParams(dp(28), -2))
-
-        val logo = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            background = roundRect(Theme.white, 6)
-        }
-        row.addView(logo, LinearLayout.LayoutParams(dp(32), dp(32)).apply {
-            leftMargin = dp(Theme.SPACING_SM)
-            rightMargin = dp(Theme.SPACING_SM)
-        })
-
-        row.addView(TextView(this).apply {
-            setText(item.name)
-            textSize = 13f
-            setTextColor(Theme.white)
-            maxLines = 1
-        }, LinearLayout.LayoutParams(0, -2, 1f))
-
-        val favorite = FavoriteStore.contains(this, item)
-        row.addView(TextView(this).apply {
-            setText(if (favorite) "♥" else "♡")
-            textSize = 14f
-            setTextColor(if (favorite) Theme.accentMagenta else Theme.textMuted)
-        })
-
-        row.layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) }
-        item.logo?.takeIf { it.isNotBlank() }?.let { loadImage(it, logo) }
-        return row
-    }
-
-    /** Mesmo card de pôster da Home (Filmes/Séries/Kids). */
-    private fun posterCard(item: M3uItem): View {
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            isFocusable = true
-            isClickable = true
-            setOnClickListener { openItem(item) }
-        }
-        val poster = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            background = roundRect(Theme.darkSurface, Theme.RADIUS_SM)
-            clipToOutline = true
-        }
-        box.addView(poster, LinearLayout.LayoutParams(dp(posterWidth), dp(posterHeight)))
-        box.addView(TextView(this).apply {
-            setText(item.name)
-            textSize = if (isTv) 15f else 12f
-            setTextColor(Theme.white)
-            maxLines = 1
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-
-        item.logo?.takeIf { it.isNotBlank() }?.let { loadImage(it, poster) }
-        return box
+        status.setText(
+            if (filtered.isEmpty()) "Nenhum conteúdo encontrado"
+            else "${filtered.size} ${if (mode == M3uItem.Kind.CHANNEL) "canais" else "títulos"}"
+        )
+        adapter.submit(filtered)
     }
 
     private fun openItem(item: M3uItem) {
@@ -348,20 +271,6 @@ class CatalogActivity : ComponentActivity() {
         }
     }
 
-    private fun loadImage(url: String, target: ImageView) {
-        lifecycleScope.launch {
-            val bitmap = withContext(Dispatchers.IO) {
-                runCatching {
-                    val connection = URL(url).openConnection() as HttpURLConnection
-                    connection.connectTimeout = 5000
-                    connection.readTimeout = 7000
-                    connection.inputStream.use { BitmapFactory.decodeStream(it) }
-                }.getOrNull()
-            }
-            if (bitmap != null && !isFinishing) target.setImageBitmap(bitmap)
-        }
-    }
-
     private fun modeTitle(): String = when (mode) {
         M3uItem.Kind.CHANNEL -> "Canais"
         M3uItem.Kind.MOVIE -> "Filmes"
@@ -370,4 +279,179 @@ class CatalogActivity : ComponentActivity() {
     }
 
     private fun List<M3uItem>.filterForMode(kind: M3uItem.Kind) = filter { it.kind == kind }
+}
+
+/**
+ * Adapter único pros dois formatos de item: linha numerada (canal) e
+ * card de pôster (filme/série/kids) — o `isChannelMode` decide qual.
+ */
+private class CatalogAdapter(
+    private val isChannelMode: Boolean,
+    private val posterWidthPx: Int,
+    private val posterHeightPx: Int,
+    private val posterNameSizeSp: Float,
+    private val onClick: (M3uItem) -> Unit,
+    private val onToggleFavorite: (M3uItem) -> Boolean,
+) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+    private var items: List<M3uItem> = emptyList()
+
+    fun submit(newItems: List<M3uItem>) {
+        items = newItems
+        notifyDataSetChanged()
+    }
+
+    override fun getItemCount(): Int = items.size
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+        val context = parent.context
+        return if (isChannelMode) {
+            ChannelRowHolder(buildChannelRow(context))
+        } else {
+            PosterHolder(buildPosterCard(context))
+        }
+    }
+
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+        val item = items[position]
+        when (holder) {
+            is ChannelRowHolder -> holder.bind(item, position, onClick, onToggleFavorite)
+            is PosterHolder -> holder.bind(item, onClick)
+        }
+    }
+
+    // -----------------------------------------------------------------
+
+    private fun buildChannelRow(context: android.content.Context): LinearLayout {
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = context.roundRect(Theme.darkSurface, Theme.RADIUS_SM)
+            setPadding(context.dp(Theme.SPACING_SM), context.dp(Theme.SPACING_SM), context.dp(Theme.SPACING_SM), context.dp(Theme.SPACING_SM))
+            isFocusable = true
+            isClickable = true
+            layoutParams = RecyclerView.LayoutParams(-1, -2).apply { bottomMargin = context.dp(6) }
+        }
+        val number = TextView(context).apply {
+            textSize = 12f
+            setTextColor(Theme.textMuted)
+            tag = "number"
+        }
+        row.addView(number, LinearLayout.LayoutParams(context.dp(28), -2))
+
+        val logo = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            background = context.roundRect(Theme.white, 6)
+            tag = "logo"
+        }
+        row.addView(logo, LinearLayout.LayoutParams(context.dp(32), context.dp(32)).apply {
+            leftMargin = context.dp(Theme.SPACING_SM)
+            rightMargin = context.dp(Theme.SPACING_SM)
+        })
+
+        val name = TextView(context).apply {
+            textSize = 13f
+            setTextColor(Theme.white)
+            maxLines = 1
+            tag = "name"
+        }
+        row.addView(name, LinearLayout.LayoutParams(0, -2, 1f))
+
+        val heart = TextView(context).apply {
+            textSize = 16f
+            gravity = Gravity.CENTER
+            isFocusable = true
+            isClickable = true
+            tag = "heart"
+        }
+        row.addView(heart, LinearLayout.LayoutParams(context.dp(36), context.dp(36)))
+        return row
+    }
+
+    private fun buildPosterCard(context: android.content.Context): LinearLayout {
+        val box = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            isFocusable = true
+            isClickable = true
+            layoutParams = RecyclerView.LayoutParams(posterWidthPx, -2).apply {
+                (this as? ViewGroup.MarginLayoutParams)?.let {
+                    it.rightMargin = context.dp(Theme.SPACING_SM)
+                    it.bottomMargin = context.dp(Theme.SPACING_SM)
+                }
+            }
+        }
+        val poster = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            background = context.roundRect(Theme.darkSurface, Theme.RADIUS_SM)
+            clipToOutline = true
+            tag = "poster"
+        }
+        box.addView(poster, LinearLayout.LayoutParams(posterWidthPx, posterHeightPx))
+        box.addView(TextView(context).apply {
+            textSize = posterNameSizeSp
+            setTextColor(Theme.white)
+            maxLines = 1
+            tag = "name"
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = context.dp(6) })
+        return box
+    }
+
+    private class ChannelRowHolder(view: LinearLayout) : RecyclerView.ViewHolder(view) {
+        private val number = view.findViewWithTag<TextView>("number")
+        private val logo = view.findViewWithTag<ImageView>("logo")
+        private val name = view.findViewWithTag<TextView>("name")
+        private val heart = view.findViewWithTag<TextView>("heart")
+
+        fun bind(item: M3uItem, position: Int, onClick: (M3uItem) -> Unit, onToggleFavorite: (M3uItem) -> Boolean) {
+            number.setText((position + 1).toString())
+            name.setText(item.name)
+
+            // Marca qual URL este ImageView está tentando carregar agora,
+            // pra descartar o resultado se a view for reciclada antes da
+            // imagem chegar (senão o logo do canal errado aparece).
+            logo.setImageBitmap(null)
+            logo.tag = item.logo
+            item.logo?.takeIf { it.isNotBlank() }?.let { url ->
+                loadInto(logo, url)
+            }
+
+            fun refreshHeart(active: Boolean) {
+                heart.setText(if (active) "♥" else "♡")
+                heart.setTextColor(if (active) Theme.accentMagenta else Theme.textMuted)
+            }
+            refreshHeart(FavoriteStore.contains(itemView.context, item))
+            heart.setOnClickListener { refreshHeart(onToggleFavorite(item)) }
+            itemView.setOnClickListener { onClick(item) }
+        }
+    }
+
+    private class PosterHolder(view: LinearLayout) : RecyclerView.ViewHolder(view) {
+        private val poster = view.findViewWithTag<ImageView>("poster")
+        private val name = view.findViewWithTag<TextView>("name")
+
+        fun bind(item: M3uItem, onClick: (M3uItem) -> Unit) {
+            name.setText(item.name)
+            poster.setImageBitmap(null)
+            poster.tag = item.logo
+            item.logo?.takeIf { it.isNotBlank() }?.let { url -> loadInto(poster, url) }
+            itemView.setOnClickListener { onClick(item) }
+        }
+    }
+}
+
+/**
+ * Carrega uma imagem numa ImageView dentro de um ViewHolder reciclável.
+ * Guarda a URL pedida na `tag`; quando o bitmap chega, só aplica se a
+ * `tag` ainda for a mesma — senão a view já foi reaproveitada por outro
+ * item da lista e a imagem errada apareceria nela.
+ */
+private fun loadInto(view: ImageView, url: String) {
+    val activity = view.context as? ComponentActivity ?: return
+    val requestedFor = url
+    activity.lifecycleScope.launch {
+        val width = view.layoutParams?.width?.takeIf { it > 0 } ?: view.context.dp(160)
+        val height = view.layoutParams?.height?.takeIf { it > 0 } ?: view.context.dp(230)
+        val bitmap = ImageLoader.load(requestedFor, width, height)
+        if (bitmap != null && view.tag == requestedFor) view.setImageBitmap(bitmap)
+    }
 }

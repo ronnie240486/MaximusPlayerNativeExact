@@ -32,7 +32,12 @@
         <activity android:name=".DiagnosticActivity" android:screenOrientation="landscape" />
         <activity android:name=".SettingsActivity" android:screenOrientation="landscape" />
         <activity android:name=".MainActivity" android:screenOrientation="landscape" />
-        <activity android:name=".PlayerActivity" android:screenOrientation="landscape" />
+        <activity
+            android:name=".PlayerActivity"
+            android:screenOrientation="landscape"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden" />
         <activity android:name=".CameraViewActivity" android:screenOrientation="landscape" />
         <activity android:name=".WorldCamerasActivity" android:screenOrientation="landscape" />
         <activity android:name=".ScoreActivity" android:screenOrientation="landscape" />
@@ -42,7 +47,12 @@
         <activity android:name=".ContentDetailsActivity" android:screenOrientation="landscape" />
         <activity android:name=".TrailerActivity" android:screenOrientation="landscape" />
         <activity android:name=".SearchActivity" android:screenOrientation="landscape" />
-        <activity android:name=".ChannelDetailsActivity" android:screenOrientation="landscape" />
+        <activity
+            android:name=".ChannelDetailsActivity"
+            android:screenOrientation="landscape"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden" />
         <activity android:name=".ProfilesActivity" android:screenOrientation="landscape" />
         <activity android:name=".ProfileEditActivity" android:screenOrientation="landscape" />
     </application>
