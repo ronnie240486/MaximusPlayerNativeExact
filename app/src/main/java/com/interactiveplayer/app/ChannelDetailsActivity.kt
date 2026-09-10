@@ -1,26 +1,26 @@
 package com.interactiveplayer.app
 
-import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
-import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import kotlinx.coroutines.launch
 
+/**
+ * Detalhe de canal, com as cores corretas do Theme no lugar da paleta
+ * aproximada anterior. Mantém o preview ao vivo via ExoPlayer, que já
+ * existia e funciona bem.
+ */
 class ChannelDetailsActivity : ComponentActivity() {
-    private val white = Color.rgb(242, 244, 248)
-    private val muted = Color.rgb(168, 177, 196)
-    private val cyan = Color.rgb(53, 222, 231)
-    private val magenta = Color.rgb(255, 80, 180)
-    private val panel = Color.rgb(28, 40, 70)
+
     private var player: ExoPlayer? = null
-    private lateinit var favorite: TextView
+    private lateinit var favoriteButton: TextView
     private lateinit var item: M3uItem
+    private lateinit var playerView: PlayerView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,48 +38,97 @@ class ChannelDetailsActivity : ComponentActivity() {
     private fun buildView(): LinearLayout {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(8, 16, 30))
-            setPadding(dp(24), dp(18), dp(24), dp(20))
+            setBackgroundColor(Theme.black)
+            setPadding(
+                dp(Theme.SPACING_MD),
+                dp(Theme.SPACING_MD),
+                dp(Theme.SPACING_MD),
+                dp(Theme.SPACING_LG)
+            )
         }
+
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         header.addView(TextView(this).apply {
-            text = "‹"
-            textSize = 34f
-            setTextColor(white)
-            gravity = Gravity.CENTER
+            setText("‹")
+            textSize = 24f
+            setTextColor(Theme.white)
+            setPadding(dp(4), dp(4), dp(4), dp(4))
             isFocusable = true
+            isClickable = true
             setOnClickListener { finish() }
-        }, LinearLayout.LayoutParams(dp(60), dp(58)))
+        })
         header.addView(TextView(this).apply {
-            text = item.name
-            textSize = 22f
-            setTextColor(white)
+            setText(item.name)
+            textSize = 18f
+            setTextColor(Theme.white)
+            setTypeface(Typeface.DEFAULT_BOLD)
             maxLines = 1
-        }, LinearLayout.LayoutParams(0, dp(58), 1f))
-        root.addView(header)
-        val preview = PlayerView(this).apply { useController = true; setBackgroundColor(Color.BLACK) }
-        root.addView(preview, LinearLayout.LayoutParams(-1, dp(390)))
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(Theme.SPACING_SM) })
+        root.addView(header, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(Theme.SPACING_SM)
+        })
+
+        playerView = PlayerView(this).apply {
+            useController = true
+            setBackgroundColor(Theme.black)
+            background = roundRect(Theme.black, Theme.RADIUS_MD)
+        }
+        val previewHeight = (resources.displayMetrics.widthPixels * 0.5).toInt()
+        root.addView(playerView, LinearLayout.LayoutParams(-1, previewHeight).apply {
+            bottomMargin = dp(Theme.SPACING_MD)
+        })
+
         root.addView(TextView(this).apply {
-            text = "${item.group.ifBlank { "Canais" }}  •  EPG disponível quando enviado pelo painel"
-            textSize = 16f
-            setTextColor(muted)
-            setPadding(dp(4), dp(16), dp(4), dp(12))
-        }, LinearLayout.LayoutParams(-1, dp(52)))
-        val actions = LinearLayout(this).apply { gravity = Gravity.CENTER }
-        actions.addView(button("ASSISTIR", cyan, Color.BLACK) {
-            startActivity(android.content.Intent(this@ChannelDetailsActivity, PlayerActivity::class.java).putExtra("url", item.url).putExtra("title", item.name))
+            setText(item.group.ifBlank { "Canais" } + "  •  EPG disponível quando enviado pelo painel")
+            textSize = 13f
+            setTextColor(Theme.textSecondary)
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(Theme.SPACING_MD) })
+
+        val actions = LinearLayout(this).apply { gravity = Gravity.CENTER_HORIZONTAL }
+        actions.addView(actionButton("ASSISTIR EM TELA CHEIA", Theme.accentCyan, Theme.black) {
+            startActivity(
+                android.content.Intent(this, PlayerActivity::class.java)
+                    .putExtra("url", item.url)
+                    .putExtra("title", item.name)
+            )
         }, actionParams())
-        favorite = button("", panel, white) { FavoriteStore.toggle(this@ChannelDetailsActivity, item); refreshFavorite() }
-        actions.addView(favorite, actionParams())
+
+        favoriteButton = actionButton("", Theme.darkSurfaceAlt, Theme.white) {
+            FavoriteStore.toggle(this, item)
+            refreshFavorite()
+        }
+        actions.addView(favoriteButton, actionParams())
         refreshFavorite()
         root.addView(actions)
         return root
     }
 
+    private fun refreshFavorite() {
+        val active = FavoriteStore.contains(this, item)
+        favoriteButton.setText(if (active) "♥ FAVORITADO" else "♡ FAVORITAR")
+        favoriteButton.setTextColor(if (active) Theme.accentMagenta else Theme.white)
+    }
+
+    private fun actionButton(label: String, background: Int, foreground: Int, action: () -> Unit): TextView =
+        TextView(this).apply {
+            setText(label)
+            textSize = 13f
+            setTypeface(Typeface.DEFAULT_BOLD)
+            gravity = Gravity.CENTER
+            setTextColor(foreground)
+            this.background = roundRect(background, Theme.RADIUS_SM)
+            isFocusable = true
+            isClickable = true
+            setOnClickListener { action() }
+        }
+
+    private fun actionParams() = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+        leftMargin = dp(6)
+        rightMargin = dp(6)
+    }
+
     private fun startPreview() {
-        val view = (window.decorView as? android.view.ViewGroup)?.findViewById<PlayerView>(android.R.id.content)
-        val playerView = findPlayerView(window.decorView)
-        if (item.url.isBlank() || playerView == null) return
+        if (item.url.isBlank()) return
         player = ExoPlayer.Builder(this).build().also {
             playerView.player = it
             it.setMediaItem(MediaItem.fromUri(item.url))
@@ -87,32 +136,6 @@ class ChannelDetailsActivity : ComponentActivity() {
             it.playWhenReady = true
         }
     }
-
-    private fun findPlayerView(view: android.view.View): PlayerView? {
-        if (view is PlayerView) return view
-        if (view is android.view.ViewGroup) for (index in 0 until view.childCount) findPlayerView(view.getChildAt(index))?.let { return it }
-        return null
-    }
-
-    private fun refreshFavorite() {
-        val active = FavoriteStore.contains(this, item)
-        favorite.text = if (active) "♥ FAVORITADO" else "♡ FAVORITAR"
-        favorite.setTextColor(if (active) magenta else white)
-    }
-
-    private fun button(label: String, background: Int, foreground: Int, action: () -> Unit) = TextView(this).apply {
-        text = label
-        textSize = 16f
-        gravity = Gravity.CENTER
-        setTextColor(foreground)
-        setBackgroundColor(background)
-        isFocusable = true
-        setOnFocusChangeListener { view, focused -> view.setBackgroundColor(if (focused) Color.rgb(43, 73, 96) else background) }
-        setOnClickListener { action() }
-    }
-
-    private fun actionParams() = LinearLayout.LayoutParams(dp(230), dp(58)).apply { setMargins(dp(6), 0, dp(6), 0) }
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     override fun onStop() {
         player?.release()

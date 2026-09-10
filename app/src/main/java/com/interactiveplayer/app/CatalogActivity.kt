@@ -1,18 +1,20 @@
 package com.interactiveplayer.app
 
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
-import android.content.Intent
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.widget.EditText
-import android.widget.HorizontalScrollView
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -21,84 +23,153 @@ import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
 
+/**
+ * Catálogo, portado de `frontend/app/channels.tsx` (para Canais) e
+ * `frontend/app/movies.tsx`/`series.tsx` (para Filmes/Séries/Kids).
+ *
+ * Canais usa lista numerada (como um guia de TV): número, logo pequeno,
+ * nome e coração de favorito, igual ao `ChannelRow` do original. Filmes,
+ * séries e kids usam grade de pôsteres, igual à Home.
+ *
+ * Fica de fora desta versão: o preview ao vivo do canal em destaque
+ * (`TVChannelPreview`) que o original mostra ao lado da lista — pediria
+ * manter um ExoPlayer rodando atrás da tela de navegação, o que é um
+ * pedaço grande por si só.
+ */
 class CatalogActivity : ComponentActivity() {
-    private val white = Color.rgb(242, 244, 248)
-    private val muted = Color.rgb(168, 177, 196)
-    private val cyan = Color.rgb(53, 222, 231)
-    private val panel = Color.rgb(28, 40, 70)
+
+    private companion object {
+        const val FAVORITES = "Favoritos"
+    }
+
     private var allItems: List<M3uItem> = emptyList()
     private var selectedGroup: String? = null
-    private lateinit var grid: LinearLayout
+    private var mode: M3uItem.Kind = M3uItem.Kind.CHANNEL
+    private var searchQuery: String = ""
+
+    private lateinit var itemsHost: LinearLayout
     private lateinit var categoriesView: LinearLayout
     private lateinit var status: TextView
     private lateinit var search: EditText
-    private var mode: M3uItem.Kind = M3uItem.Kind.CHANNEL
+
+    private val isTv: Boolean by lazy { DeviceType.isTV(this) }
+    private val posterWidth get() = if (isTv) 160 else 130
+    private val posterHeight get() = posterWidth * 130 / 90
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        mode = runCatching { M3uItem.Kind.valueOf(intent.getStringExtra("mode") ?: "CHANNEL") }.getOrDefault(M3uItem.Kind.CHANNEL)
-        setContentView(buildCatalog())
+        mode = runCatching {
+            M3uItem.Kind.valueOf(intent.getStringExtra("mode") ?: "CHANNEL")
+        }.getOrDefault(M3uItem.Kind.CHANNEL)
+        setContentView(buildScreen())
         if (intent.getBooleanExtra("focusSearch", false)) search.requestFocus()
         loadPlaylist()
     }
 
-    private fun buildCatalog(): View {
+    private fun buildScreen(): View {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(8, 16, 30))
-            setPadding(dp(22), dp(18), dp(22), dp(22))
+            setBackgroundColor(Theme.black)
         }
-        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        header.addView(TextView(this).apply {
-            text = "‹  ${modeTitle()}"
-            textSize = 28f
-            setTextColor(white)
-            isFocusable = true
-            setOnClickListener { finish() }
-        }, LinearLayout.LayoutParams(dp(300), dp(64)))
-        search = EditText(this).apply {
-            hint = "Buscar neste catálogo"
-            textSize = 18f
-            setTextColor(white)
-            setHintTextColor(muted)
-            setSingleLine(true)
-            setOnEditorActionListener { _, _, _ -> renderItems(); false }
+        root.addView(buildHeader())
+
+        status = TextView(this).apply {
+            setText("Carregando catálogo...")
+            textSize = 12f
+            setTextColor(Theme.textSecondary)
         }
-        header.addView(search, LinearLayout.LayoutParams(0, dp(58), 1f))
-        header.addView(TextView(this).apply {
-            text = "VOLTAR"
-            textSize = 18f
-            gravity = Gravity.CENTER
-            setTextColor(cyan)
-            isFocusable = true
-            setOnClickListener { finish() }
-        }, LinearLayout.LayoutParams(dp(150), dp(58)))
-        root.addView(header)
-        status = TextView(this).apply { text = "Carregando catálogo completo..."; textSize = 16f; setTextColor(muted) }
-        root.addView(status, LinearLayout.LayoutParams(-1, dp(42)))
+        root.addView(status, LinearLayout.LayoutParams(-1, -2).apply {
+            leftMargin = dp(Theme.SPACING_MD)
+            rightMargin = dp(Theme.SPACING_MD)
+            bottomMargin = dp(Theme.SPACING_SM)
+        })
 
         val content = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+
         val categoryScroll = ScrollView(this)
-        categoriesView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(6), dp(16), 0) }
+        categoriesView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(Theme.SPACING_MD), 0, dp(Theme.SPACING_SM), dp(Theme.SPACING_MD))
+        }
         categoryScroll.addView(categoriesView)
-        content.addView(categoryScroll, LinearLayout.LayoutParams(dp(260), 0, 1f))
+        content.addView(categoryScroll, LinearLayout.LayoutParams(dp(if (isTv) 200 else 150), -1))
 
         val itemScroll = ScrollView(this)
-        grid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(8), dp(6), 0, dp(16)) }
-        itemScroll.addView(grid)
-        content.addView(itemScroll, LinearLayout.LayoutParams(0, -1, 3f))
+        itemsHost = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 0, dp(Theme.SPACING_MD), dp(Theme.SPACING_MD))
+        }
+        itemScroll.addView(itemsHost)
+        content.addView(itemScroll, LinearLayout.LayoutParams(0, -1, 1f))
+
         root.addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
         return root
     }
+
+    private fun buildHeader(): View {
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(
+                dp(Theme.SPACING_MD),
+                dp(Theme.SPACING_MD),
+                dp(Theme.SPACING_MD),
+                dp(Theme.SPACING_SM)
+            )
+        }
+        header.addView(TextView(this).apply {
+            setText("‹")
+            textSize = 24f
+            setTextColor(Theme.white)
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            isFocusable = true
+            isClickable = true
+            setOnClickListener { finish() }
+        })
+        header.addView(TextView(this).apply {
+            setText(modeTitle())
+            textSize = 18f
+            setTextColor(Theme.white)
+            setTypeface(Typeface.DEFAULT_BOLD)
+        }, LinearLayout.LayoutParams(-2, -2).apply {
+            leftMargin = dp(Theme.SPACING_SM)
+            rightMargin = dp(Theme.SPACING_MD)
+        })
+        search = EditText(this).apply {
+            hint = "Buscar em $modeTitleLower"
+            textSize = 13f
+            setSingleLine(true)
+            setTextColor(Theme.white)
+            setHintTextColor(Theme.textMuted)
+            background = roundRect(Theme.darkSurfaceAlt, Theme.RADIUS_MD)
+            setPadding(dp(Theme.SPACING_MD), 0, dp(Theme.SPACING_MD), 0)
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    searchQuery = s?.toString()?.trim()?.lowercase().orEmpty()
+                    renderItems()
+                }
+                override fun afterTextChanged(s: Editable?) = Unit
+            })
+        }
+        header.addView(search, LinearLayout.LayoutParams(0, dp(40), 1f))
+        return header
+    }
+
+    private val modeTitleLower get() = modeTitle().lowercase()
 
     private fun loadPlaylist() {
         lifecycleScope.launch {
             allItems = CatalogRepository.load(this@CatalogActivity)
             if (allItems.isEmpty()) {
-                status.text = "Nenhum item carregado. Configure a lista M3U nas configurações."
+                status.setText("Nenhum item carregado ainda. Puxando o catálogo...")
+                val fresh = CatalogRepository.load(this@CatalogActivity, force = true)
+                allItems = fresh
+            }
+            if (allItems.isEmpty()) {
+                status.setText("Nenhum item carregado. Confira sua lista nas configurações.")
                 renderCategories(emptyList())
             } else {
-                status.text = "${allItems.size} itens carregados"
                 renderCategories(allItems.filterForMode(mode).map { it.group }.distinct().sorted())
                 renderItems()
             }
@@ -106,107 +177,188 @@ class CatalogActivity : ComponentActivity() {
     }
 
     private fun renderCategories(groups: List<String>) {
-        if (!::categoriesView.isInitialized) return
-        val root = categoriesView
-        root.removeAllViews()
-        addCategory(root, "Todos", null)
-        groups.forEach { addCategory(root, it, it) }
+        categoriesView.removeAllViews()
+        categoriesView.addView(categoryChip("Todos", null))
+        categoriesView.addView(categoryChip(FAVORITES, FAVORITES))
+        groups.forEach { group -> categoriesView.addView(categoryChip(group, group)) }
     }
 
-    private fun addCategory(root: LinearLayout, label: String, group: String?) {
-        root.addView(TextView(this).apply {
-            text = label
-            textSize = 16f
-            setTextColor(if (selectedGroup == group) cyan else white)
-            setBackgroundColor(if (selectedGroup == group) Color.rgb(36, 57, 92) else panel)
-            setPadding(dp(16), dp(13), dp(12), dp(13))
+    private fun categoryChip(label: String, group: String?): View =
+        TextView(this).apply {
+            setText(label)
+            textSize = 13f
+            maxLines = 1
+            setPadding(dp(Theme.SPACING_SM), dp(10), dp(Theme.SPACING_SM), dp(10))
+            refreshChipColors(this, group)
             isFocusable = true
-            setOnClickListener { selectedGroup = group; renderCategories(root.childrenLabels()); renderItems() }
-        }, LinearLayout.LayoutParams(-1, dp(54)).apply { setMargins(0, 0, 0, dp(7)) })
+            isClickable = true
+            setOnClickListener {
+                selectedGroup = group
+                refreshAllChips()
+                renderItems()
+            }
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
+                bottomMargin = dp(6)
+            }
+        }
+
+    private fun refreshChipColors(chip: TextView, group: String?) {
+        val active = selectedGroup == group
+        chip.setTextColor(if (active) Theme.accentCyan else Theme.white)
+        chip.background = roundRect(if (active) Theme.darkSurfaceAlt else Color.TRANSPARENT, Theme.RADIUS_SM)
+    }
+
+    private fun refreshAllChips() {
+        for (index in 0 until categoriesView.childCount) {
+            val chip = categoriesView.getChildAt(index) as TextView
+            val group = when (index) {
+                0 -> null
+                1 -> FAVORITES
+                else -> chip.text.toString()
+            }
+            refreshChipColors(chip, group)
+        }
     }
 
     private fun renderItems() {
-        if (!::grid.isInitialized) return
-        val query = search.text?.toString()?.trim()?.lowercase().orEmpty()
-        val items = allItems.filterForMode(mode).filter { selectedGroup == null || it.group == selectedGroup }.filter { query.isEmpty() || it.name.lowercase().contains(query) }
-        grid.removeAllViews()
-        if (items.isEmpty()) {
-            grid.addView(TextView(this).apply { text = "Nenhum conteúdo encontrado"; textSize = 18f; setTextColor(muted) })
+        val base = allItems.filterForMode(mode)
+        val filtered = when (selectedGroup) {
+            null -> base
+            FAVORITES -> base.filter { FavoriteStore.contains(this, it) }
+            else -> base.filter { it.group == selectedGroup }
+        }.filter { searchQuery.isEmpty() || it.name.lowercase().contains(searchQuery) }
+
+        itemsHost.removeAllViews()
+        if (filtered.isEmpty()) {
+            itemsHost.addView(TextView(this).apply {
+                setText("Nenhum conteúdo encontrado")
+                textSize = 14f
+                setTextColor(Theme.textMuted)
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(Theme.SPACING_LG) })
             return
         }
-        items.chunked(5).forEach { rowItems ->
-            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            rowItems.forEach { item ->
-                val card = LinearLayout(this@CatalogActivity).apply {
-                    orientation = LinearLayout.VERTICAL
-                    gravity = Gravity.CENTER
-                    setBackgroundColor(panel)
-                    isFocusable = true
-                    setOnClickListener {
-                        if (item.kind == M3uItem.Kind.CHANNEL) {
-                            startActivity(Intent(this@CatalogActivity, ChannelDetailsActivity::class.java).apply {
-                                putExtra("name", item.name)
-                                putExtra("group", item.group)
-                                putExtra("logo", item.logo)
-                                putExtra("url", item.url)
-                            })
-                        } else {
-                            startActivity(Intent(this@CatalogActivity, ContentDetailsActivity::class.java).apply {
-                                putExtra("name", item.name)
-                                putExtra("group", item.group)
-                                putExtra("logo", item.logo)
-                                putExtra("url", item.url)
-                                putExtra("kind", item.kind.name)
-                            })
-                        }
-                    }
+
+        if (mode == M3uItem.Kind.CHANNEL) {
+            filtered.forEachIndexed { index, item -> itemsHost.addView(channelRow(item, index)) }
+        } else {
+            val columns = maxOf(3, (resources.displayMetrics.widthPixels * 0.7).toInt() / dp(posterWidth + Theme.SPACING_SM))
+            var line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            filtered.forEachIndexed { index, item ->
+                if (index % columns == 0) {
+                    line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                    itemsHost.addView(line, LinearLayout.LayoutParams(-1, -2).apply {
+                        bottomMargin = dp(Theme.SPACING_SM)
+                    })
                 }
-                val poster = ImageView(this@CatalogActivity).apply {
-                    scaleType = ImageView.ScaleType.CENTER_CROP
-                    setBackgroundColor(Color.rgb(35, 48, 80))
-                    contentDescription = item.name
-                }
-                card.addView(poster, LinearLayout.LayoutParams(-1, dp(112)))
-                card.addView(TextView(this@CatalogActivity).apply {
-                    text = item.name
-                    textSize = 13f
-                    gravity = Gravity.CENTER
-                    setTextColor(white)
-                    maxLines = 2
-                    setPadding(dp(6), dp(4), dp(6), dp(4))
-                }, LinearLayout.LayoutParams(-1, dp(48)))
-                val favorite = TextView(this@CatalogActivity).apply {
-                    textSize = 13f
-                    gravity = Gravity.CENTER
-                    setPadding(0, 0, 0, dp(4))
-                    isFocusable = true
-                    setOnFocusChangeListener { view, focused ->
-                        (view as TextView).setTextColor(if (focused) cyan else white)
-                    }
-                    fun refresh() { text = if (FavoriteStore.contains(this@CatalogActivity, item)) "♥ Favorito" else "♡ Favoritar" }
-                    refresh()
-                    setOnClickListener {
-                        FavoriteStore.toggle(this@CatalogActivity, item)
-                        refresh()
-                    }
-                }
-                card.addView(favorite, LinearLayout.LayoutParams(-1, dp(28)))
-                row.addView(card, LinearLayout.LayoutParams(0, dp(194), 1f).apply { setMargins(0, 0, dp(8), dp(10)) })
-                item.logo?.takeIf { it.isNotBlank() }?.let { logo -> loadPoster(logo, poster) }
+                line.addView(
+                    posterCard(item),
+                    LinearLayout.LayoutParams(dp(posterWidth), -2).apply { rightMargin = dp(Theme.SPACING_SM) }
+                )
             }
-            grid.addView(row, LinearLayout.LayoutParams(-1, dp(204)))
         }
     }
 
-    private fun loadPoster(url: String, target: ImageView) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            val bitmap = runCatching {
-                val connection = URL(url).openConnection() as HttpURLConnection
-                connection.connectTimeout = 5000
-                connection.readTimeout = 7000
-                connection.inputStream.use { BitmapFactory.decodeStream(it) }
-            }.getOrNull()
-            if (bitmap != null) withContext(Dispatchers.Main) { target.setImageBitmap(bitmap) }
+    /** Fiel ao ChannelRow do original: número, logo, nome, coração. */
+    private fun channelRow(item: M3uItem, index: Int): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = roundRect(Theme.darkSurface, Theme.RADIUS_SM)
+            setPadding(dp(Theme.SPACING_SM), dp(Theme.SPACING_SM), dp(Theme.SPACING_SM), dp(Theme.SPACING_SM))
+            isFocusable = true
+            isClickable = true
+            setOnClickListener { openItem(item) }
+        }
+        row.addView(TextView(this).apply {
+            setText((index + 1).toString())
+            textSize = 12f
+            setTextColor(Theme.textMuted)
+        }, LinearLayout.LayoutParams(dp(28), -2))
+
+        val logo = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            background = roundRect(Theme.white, 6)
+        }
+        row.addView(logo, LinearLayout.LayoutParams(dp(32), dp(32)).apply {
+            leftMargin = dp(Theme.SPACING_SM)
+            rightMargin = dp(Theme.SPACING_SM)
+        })
+
+        row.addView(TextView(this).apply {
+            setText(item.name)
+            textSize = 13f
+            setTextColor(Theme.white)
+            maxLines = 1
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+
+        val favorite = FavoriteStore.contains(this, item)
+        row.addView(TextView(this).apply {
+            setText(if (favorite) "♥" else "♡")
+            textSize = 14f
+            setTextColor(if (favorite) Theme.accentMagenta else Theme.textMuted)
+        })
+
+        row.layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) }
+        item.logo?.takeIf { it.isNotBlank() }?.let { loadImage(it, logo) }
+        return row
+    }
+
+    /** Mesmo card de pôster da Home (Filmes/Séries/Kids). */
+    private fun posterCard(item: M3uItem): View {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            isFocusable = true
+            isClickable = true
+            setOnClickListener { openItem(item) }
+        }
+        val poster = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            background = roundRect(Theme.darkSurface, Theme.RADIUS_SM)
+            clipToOutline = true
+        }
+        box.addView(poster, LinearLayout.LayoutParams(dp(posterWidth), dp(posterHeight)))
+        box.addView(TextView(this).apply {
+            setText(item.name)
+            textSize = if (isTv) 15f else 12f
+            setTextColor(Theme.white)
+            maxLines = 1
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+
+        item.logo?.takeIf { it.isNotBlank() }?.let { loadImage(it, poster) }
+        return box
+    }
+
+    private fun openItem(item: M3uItem) {
+        WatchHistoryStore.record(this, item)
+        if (item.kind == M3uItem.Kind.CHANNEL) {
+            startActivity(Intent(this, ChannelDetailsActivity::class.java).apply {
+                putExtra("name", item.name)
+                putExtra("group", item.group)
+                putExtra("logo", item.logo)
+                putExtra("url", item.url)
+            })
+        } else {
+            startActivity(Intent(this, ContentDetailsActivity::class.java).apply {
+                putExtra("name", item.name)
+                putExtra("group", item.group)
+                putExtra("logo", item.logo)
+                putExtra("url", item.url)
+                putExtra("kind", item.kind.name)
+            })
+        }
+    }
+
+    private fun loadImage(url: String, target: ImageView) {
+        lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.IO) {
+                runCatching {
+                    val connection = URL(url).openConnection() as HttpURLConnection
+                    connection.connectTimeout = 5000
+                    connection.readTimeout = 7000
+                    connection.inputStream.use { BitmapFactory.decodeStream(it) }
+                }.getOrNull()
+            }
+            if (bitmap != null && !isFinishing) target.setImageBitmap(bitmap)
         }
     }
 
@@ -217,8 +369,5 @@ class CatalogActivity : ComponentActivity() {
         M3uItem.Kind.KIDS -> "Kids"
     }
 
-    private fun List<M3uItem>.filterForMode(kind: M3uItem.Kind) = filter { it.kind == kind || (kind == M3uItem.Kind.KIDS && it.kind == M3uItem.Kind.KIDS) }
-    private fun LinearLayout.childrenLabels(): List<String> = (0 until childCount).map { (getChildAt(it) as TextView).text.toString() }
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
-
+    private fun List<M3uItem>.filterForMode(kind: M3uItem.Kind) = filter { it.kind == kind }
 }
