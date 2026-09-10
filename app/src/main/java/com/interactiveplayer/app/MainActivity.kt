@@ -36,17 +36,25 @@ import java.util.Locale
  */
 class MainActivity : ComponentActivity() {
 
-    // Medidas do ramo isTV do home.tsx
-    private val sideNavWidth = 112
-    private val sideNavItemWidth = 92
-    private val navIconSize = 26f
-    private val navLabelSize = 12f
-    private val posterWidth = 160
-    private val posterHeight = 231      // 160 * (130 / 90)
-    private val circularSize = 110
-    private val circularImgSize = 76
+    // Cada medida tem a versão de TV e a de celular em paisagem, como no
+    // home.tsx (`isTV ? A : isLandscape ? B : C`). Cravar só o ramo isTV
+    // fazia o conteúdo estourar a tela do celular.
+    private val sideNavWidth get() = if (isTv) 112 else 78
+    private val sideNavItemWidth get() = if (isTv) 92 else 52
+    private val sideNavItemPadV get() = if (isTv) 6 else 0
+    private val sideNavItemGap get() = if (isTv) 4 else 2
+    private val navIconSize get() = if (isTv) 26f else 18f
+    private val navLabelSize get() = if (isTv) 12f else 8f
+    private val posterWidth get() = if (isTv) 160 else 130
+    private val posterHeight get() = posterWidth * 130 / 90
+    private val circularSize get() = if (isTv) 110 else 88
+    private val circularImgSize get() = if (isTv) 76 else 60
+    private val posterNameSize get() = if (isTv) 15f else 12f
+    private val circularNameSize get() = if (isTv) 14f else 11f
     private val rowGap = 10
     private val rowPaddingH = 16
+
+    private val isTv: Boolean by lazy { DeviceType.isTV(this) }
 
     private lateinit var homeBody: LinearLayout
     private var heroIndex = 0
@@ -198,13 +206,13 @@ class MainActivity : ComponentActivity() {
             val item = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(0, dp(6), 0, dp(6))   // sideNavItemTV paddingVertical: 6
+                setPadding(0, dp(sideNavItemPadV), 0, dp(sideNavItemPadV))
                 isFocusable = true
                 isClickable = true
                 addView(icon, LinearLayout.LayoutParams(-1, -2))
                 addView(
                     text,
-                    LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) } // gap: 4
+                    LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(sideNavItemGap) }
                 )
                 background = focusBackground()
                 setOnFocusChangeListener { _, focused ->
@@ -709,7 +717,7 @@ class MainActivity : ComponentActivity() {
 
         box.addView(TextView(this).apply {
             setText(item.name)
-            textSize = 15f                  // posterNameTV
+            textSize = posterNameSize
             setTextColor(Theme.white)
             maxLines = 1
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
@@ -743,7 +751,7 @@ class MainActivity : ComponentActivity() {
 
         box.addView(TextView(this).apply {
             setText(item.name)
-            textSize = 14f                  // circularNameTV
+            textSize = circularNameSize
             setTextColor(Theme.textSecondary)
             gravity = Gravity.CENTER
             maxLines = 1

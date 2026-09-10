@@ -51,7 +51,7 @@ class ProfilesActivity : ComponentActivity() {
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(0, dp(Theme.SPACING_XL), 0, 0)   // styles.safe paddingTop
+            setPadding(0, dpTV(Theme.SPACING_XL, Theme.SPACING_SM), 0, 0)
         }
 
         // styles.title + titleTV (marginTop 88 por causa do overscan de TV)
@@ -61,7 +61,11 @@ class ProfilesActivity : ComponentActivity() {
             setTextColor(Theme.white)
             setTypeface(Typeface.DEFAULT_BOLD)
             gravity = Gravity.CENTER
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(88) })
+        }, LinearLayout.LayoutParams(-1, -2).apply {
+            // styles.title marginTop 48; titleTV sobe pra 88 por causa do
+            // overscan das TVs, que corta uma faixa das bordas.
+            topMargin = dpTV(88, 48)
+        })
 
         // styles.underline: 48x3 ciano, cantos de 2
         page.addView(View(this).apply {
@@ -73,7 +77,7 @@ class ProfilesActivity : ComponentActivity() {
 
         // styles.centerBlock + centerBlockTV (paddingTop 32)
         val centerBlock = FrameLayout(this).apply {
-            setPadding(0, dp(32), 0, 0)
+            setPadding(0, dpTV(32, 0), 0, 0)   // centerBlockTV paddingTop
         }
         centerBlock.addView(buildProfileRow(), FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
         page.addView(centerBlock, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -136,7 +140,10 @@ class ProfilesActivity : ComponentActivity() {
         // O original só oferece o slot de adicionar até 6 perfis.
         if (profiles.size < 6) row.addView(buildAddItem())
 
-        scroll.addView(row)
+        scroll.addView(
+            row,
+            FrameLayout.LayoutParams(-2, -2, Gravity.CENTER)
+        )
         return scroll
     }
 
