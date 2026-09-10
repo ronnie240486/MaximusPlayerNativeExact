@@ -71,8 +71,12 @@ class WelcomeActivity : ComponentActivity() {
         }
 
         // styles.bannerBox: width 55%, maxWidth 260, aspectRatio 1.
+        // O original roda em retrato, onde sobra altura. Como o nativo é
+        // travado em paisagem, o quadrado também precisa caber na altura,
+        // senão empurra o nome do app pra fora da tela no celular.
         val bannerSide = minOf(
             (resources.displayMetrics.widthPixels * 0.55f).toInt(),
+            (resources.displayMetrics.heightPixels * 0.52f).toInt(),
             dp(260)
         )
         val logo = ImageView(this).apply {
