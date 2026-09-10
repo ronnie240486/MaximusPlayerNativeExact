@@ -1,19 +1,23 @@
 package com.interactiveplayer.app
 
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.os.Bundle
+import android.graphics.Typeface
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import android.os.Bundle
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -21,109 +25,157 @@ import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
 
+/**
+ * Tela de rádios, portada de `frontend/app/radios.tsx`, usando as cores
+ * do Theme (a versão anterior tinha uma paleta própria, toda aproximada)
+ * e adicionando a categoria "Favoritos" que faltava.
+ *
+ * O original toca a rádio inline, com um mini-player fixo embaixo da
+ * lista, sem sair da tela (`useVideoPlayer` do expo-video). Portar isso
+ * pediria trazer o ExoPlayer pra dentro desta Activity; por ora, tocar
+ * uma estação continua abrindo o PlayerActivity — funciona, mas não é
+ * o comportamento exato do original.
+ */
 class RadioActivity : ComponentActivity() {
-    private val white = Color.rgb(242, 244, 248)
-    private val muted = Color.rgb(168, 177, 196)
-    private val cyan = Color.rgb(53, 222, 231)
-    private val background = Color.rgb(8, 16, 30)
-    private val panel = Color.rgb(28, 40, 70)
+
+    private companion object {
+        const val FAVORITES_KEY = "__favorites__"
+    }
+
     private lateinit var list: LinearLayout
     private lateinit var status: TextView
     private lateinit var search: EditText
-    private var selected = RadioBrowserClient.categories.first()
+    private lateinit var categoryRow: LinearLayout
+    private var selectedKey: String = RadioBrowserClient.categories.first().key
     private var requestId = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildView())
-        loadCategory(selected)
+        loadCategory(selectedKey)
     }
 
     private fun buildView(): View {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(this@RadioActivity.background)
-            setPadding(dp(24), dp(18), dp(24), dp(18))
+            setBackgroundColor(Theme.black)
+            setPadding(
+                dp(Theme.SPACING_MD),
+                dp(Theme.SPACING_MD),
+                dp(Theme.SPACING_MD),
+                dp(Theme.SPACING_MD)
+            )
         }
+
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         header.addView(TextView(this).apply {
-            text = "‹  Rádios"
-            textSize = 28f
-            setTextColor(white)
+            setText("‹  Rádios")
+            textSize = 20f
+            setTextColor(Theme.white)
+            setTypeface(Typeface.DEFAULT_BOLD)
             isFocusable = true
+            isClickable = true
             setOnClickListener { finish() }
-        }, LinearLayout.LayoutParams(dp(280), dp(64)))
+        }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(Theme.SPACING_MD) })
+
         search = EditText(this).apply {
             hint = "Buscar rádio pelo nome"
-            textSize = 17f
+            textSize = 14f
             setSingleLine(true)
-            setTextColor(white)
-            setHintTextColor(muted)
-            setBackgroundColor(panel)
-            setPadding(dp(16), 0, dp(16), 0)
+            setTextColor(Theme.white)
+            setHintTextColor(Theme.textMuted)
+            background = roundRect(Theme.darkSurfaceAlt, Theme.RADIUS_MD)
+            setPadding(dp(Theme.SPACING_MD), 0, dp(Theme.SPACING_MD), 0)
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                     val query = s?.toString()?.trim().orEmpty()
-                    if (query.length >= 2) loadSearch(query)
-                    else if (query.isEmpty()) loadCategory(selected)
+                    when {
+                        query.length >= 2 -> loadSearch(query)
+                        query.isEmpty() -> loadCategory(selectedKey)
+                    }
                 }
                 override fun afterTextChanged(s: Editable?) = Unit
             })
         }
-        header.addView(search, LinearLayout.LayoutParams(0, dp(56), 1f))
-        root.addView(header)
-        status = TextView(this).apply { textSize = 15f; setTextColor(muted); setPadding(0, dp(6), 0, dp(8)) }
-        root.addView(status, LinearLayout.LayoutParams(-1, dp(40)))
+        header.addView(search, LinearLayout.LayoutParams(0, dp(44), 1f))
+        root.addView(header, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(Theme.SPACING_SM)
+        })
 
-        val categoryScroll = ScrollView(this).apply { isHorizontalScrollBarEnabled = false }
-        val categoryRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, dp(10)) }
+        status = TextView(this).apply {
+            textSize = 12f
+            setTextColor(Theme.textSecondary)
+        }
+        root.addView(status, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(Theme.SPACING_SM)
+        })
+
+        val categoryScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+        }
+        categoryRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+
+        // "Favoritos" é sempre a primeira aba, como no ALL_CATS do original.
+        categoryRow.addView(categoryChip(FAVORITES_KEY, "Favoritos"))
         RadioBrowserClient.categories.forEach { category ->
-            categoryRow.addView(TextView(this).apply {
-                text = category.label
-                textSize = 15f
-                gravity = Gravity.CENTER
-                setTextColor(if (category.key == selected.key) Color.BLACK else white)
-                setBackgroundColor(if (category.key == selected.key) cyan else panel)
-                setPadding(dp(18), 0, dp(18), 0)
-                isFocusable = true
-                setOnFocusChangeListener { view, focused ->
-                    if (focused && category.key != selected.key) view.setBackgroundColor(Color.rgb(50, 72, 100))
-                    else view.setBackgroundColor(if (category.key == selected.key) cyan else panel)
-                }
-                setOnClickListener {
-                    selected = category
-                    search.setText("")
-                    refreshCategoryStyles(categoryRow)
-                    loadCategory(category)
-                }
-            }, LinearLayout.LayoutParams(dp(150), dp(48)).apply { setMargins(0, 0, dp(8), 0) })
+            categoryRow.addView(categoryChip(category.key, category.label))
         }
         categoryScroll.addView(categoryRow)
-        root.addView(categoryScroll, LinearLayout.LayoutParams(-1, dp(58)))
+        root.addView(categoryScroll, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(Theme.SPACING_SM)
+        })
 
         val contentScroll = ScrollView(this)
-        list = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(4), 0, dp(16))
-        }
+        list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         contentScroll.addView(list)
         root.addView(contentScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         return root
     }
 
-    private fun refreshCategoryStyles(row: LinearLayout) {
-        for (index in 0 until row.childCount) {
-            val category = RadioBrowserClient.categories[index]
-            val view = row.getChildAt(index) as TextView
-            view.setTextColor(if (category.key == selected.key) Color.BLACK else white)
-            view.setBackgroundColor(if (category.key == selected.key) cyan else panel)
+    private fun categoryChip(key: String, label: String): View =
+        TextView(this).apply {
+            setText(label)
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTypeface(Typeface.DEFAULT_BOLD)
+            refreshChipColors(this, key)
+            isFocusable = true
+            isClickable = true
+            setOnClickListener {
+                selectedKey = key
+                search.setText("")
+                refreshAllChips()
+                loadCategory(key)
+            }
+            layoutParams = LinearLayout.LayoutParams(-2, dp(38)).apply {
+                rightMargin = dp(Theme.SPACING_SM)
+            }
+        }
+
+    private fun refreshChipColors(chip: TextView, key: String) {
+        val active = key == selectedKey
+        chip.setTextColor(if (active) Theme.black else Theme.white)
+        chip.background = roundRect(if (active) Theme.accentCyan else Theme.darkSurfaceAlt, Theme.RADIUS_PILL)
+        chip.setPadding(dp(Theme.SPACING_MD), 0, dp(Theme.SPACING_MD), 0)
+    }
+
+    private fun refreshAllChips() {
+        for (index in 0 until categoryRow.childCount) {
+            val key = if (index == 0) FAVORITES_KEY else RadioBrowserClient.categories[index - 1].key
+            refreshChipColors(categoryRow.getChildAt(index) as TextView, key)
         }
     }
 
-    private fun loadCategory(category: RadioBrowserClient.Category) {
+    private fun loadCategory(key: String) {
         val token = ++requestId
-        status.text = "Carregando ${category.label.lowercase()}..."
+        if (key == FAVORITES_KEY) {
+            status.setText("Suas rádios favoritas")
+            renderStations(RadioFavoriteStore.list(this), "favoritos")
+            return
+        }
+        val category = RadioBrowserClient.categories.first { it.key == key }
+        status.setText("Carregando ${category.label.lowercase()}...")
         showLoading()
         lifecycleScope.launch {
             val stations = withContext(Dispatchers.IO) { RadioBrowserClient.fetchByCategory(category) }
@@ -134,7 +186,7 @@ class RadioActivity : ComponentActivity() {
 
     private fun loadSearch(query: String) {
         val token = ++requestId
-        status.text = "Buscando por $query..."
+        status.setText("Buscando por $query...")
         showLoading()
         lifecycleScope.launch {
             val stations = withContext(Dispatchers.IO) { RadioBrowserClient.search(query) }
@@ -146,55 +198,96 @@ class RadioActivity : ComponentActivity() {
     private fun showLoading() {
         list.removeAllViews()
         list.gravity = Gravity.CENTER
-        list.addView(ProgressBar(this).apply { indeterminateTintList = android.content.res.ColorStateList.valueOf(cyan) }, LinearLayout.LayoutParams(-1, dp(80)))
+        list.addView(
+            ProgressBar(this).apply {
+                indeterminateTintList = android.content.res.ColorStateList.valueOf(Theme.accentCyan)
+            },
+            LinearLayout.LayoutParams(-1, dp(80))
+        )
     }
 
     private fun renderStations(stations: List<RadioBrowserClient.Station>, source: String) {
         list.removeAllViews()
         list.gravity = Gravity.TOP
-        status.text = if (stations.isEmpty()) "Nenhuma estação disponível; tente outra categoria ou verifique a internet." else "${stations.size} estações em $source"
+        status.setText(
+            if (stations.isEmpty()) "Nenhuma estação disponível; tente outra categoria ou verifique a internet."
+            else "${stations.size} estações em $source"
+        )
         if (stations.isEmpty()) {
             list.addView(TextView(this).apply {
-                text = "Rádio não encontrada"
-                textSize = 20f
+                setText("Rádio não encontrada")
+                textSize = 16f
                 gravity = Gravity.CENTER
-                setTextColor(muted)
+                setTextColor(Theme.textMuted)
             }, LinearLayout.LayoutParams(-1, dp(120)))
             return
         }
-        stations.forEach { station ->
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setBackgroundColor(panel)
-                setPadding(dp(14), dp(8), dp(14), dp(8))
-                isFocusable = true
-                setOnFocusChangeListener { view, focused -> view.setBackgroundColor(if (focused) Color.rgb(45, 75, 100) else panel) }
-                setOnClickListener { startActivity(android.content.Intent(this@RadioActivity, PlayerActivity::class.java).putExtra("url", station.resolvedUrl).putExtra("title", station.name)) }
+        stations.forEach { station -> list.addView(buildStationRow(station)) }
+    }
+
+    private fun buildStationRow(station: RadioBrowserClient.Station): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = roundRect(Theme.darkSurface, Theme.RADIUS_MD)
+            setPadding(dp(Theme.SPACING_SM), dp(Theme.SPACING_SM), dp(Theme.SPACING_SM), dp(Theme.SPACING_SM))
+            isFocusable = true
+            isClickable = true
+            setOnClickListener {
+                startActivity(
+                    Intent(this@RadioActivity, PlayerActivity::class.java)
+                        .putExtra("url", station.resolvedUrl)
+                        .putExtra("title", station.name)
+                )
             }
-            val logo = ImageView(this).apply {
-                setBackgroundColor(Color.WHITE)
-                scaleType = ImageView.ScaleType.CENTER_INSIDE
-                contentDescription = station.name
-            }
-            row.addView(logo, LinearLayout.LayoutParams(dp(56), dp(56)))
-            row.addView(TextView(this).apply {
-                text = station.name.trim()
-                textSize = 18f
-                setTextColor(white)
-                maxLines = 2
-                setPadding(dp(16), 0, dp(8), 0)
-            }, LinearLayout.LayoutParams(0, -1, 1f))
-            row.addView(TextView(this).apply {
-                text = station.country?.ifBlank { "" }.orEmpty()
-                textSize = 13f
-                setTextColor(muted)
-                gravity = Gravity.CENTER_VERTICAL
-            }, LinearLayout.LayoutParams(dp(90), -1))
-            list.addView(row, LinearLayout.LayoutParams(-1, dp(76)).apply { setMargins(0, 0, 0, dp(8)) })
-            station.favicon?.let { favicon -> loadLogo(favicon, logo) }
         }
-        list.getChildAt(0)?.requestFocus()
+
+        val logo = ImageView(this).apply {
+            background = roundRect(Theme.white, Theme.RADIUS_SM)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = station.name
+        }
+        row.addView(logo, LinearLayout.LayoutParams(dp(48), dp(48)))
+
+        row.addView(TextView(this).apply {
+            setText(station.name.trim())
+            textSize = 14f
+            setTextColor(Theme.white)
+            maxLines = 2
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply {
+            leftMargin = dp(Theme.SPACING_SM)
+            rightMargin = dp(Theme.SPACING_SM)
+        })
+
+        station.country?.takeIf { it.isNotBlank() }?.let { country ->
+            row.addView(TextView(this).apply {
+                setText(country)
+                textSize = 11f
+                setTextColor(Theme.textMuted)
+            }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(Theme.SPACING_SM) })
+        }
+
+        val heart = TextView(this).apply {
+            setText(if (RadioFavoriteStore.contains(this@RadioActivity, station)) "♥" else "♡")
+            textSize = 18f
+            setTextColor(if (RadioFavoriteStore.contains(this@RadioActivity, station)) Theme.accentMagenta else Theme.textMuted)
+            isFocusable = true
+            isClickable = true
+        }
+        heart.setOnClickListener {
+            val nowFavorite = RadioFavoriteStore.toggle(this, station)
+            heart.setText(if (nowFavorite) "♥" else "♡")
+            heart.setTextColor(if (nowFavorite) Theme.accentMagenta else Theme.textMuted)
+            if (!nowFavorite && selectedKey == FAVORITES_KEY) loadCategory(FAVORITES_KEY)
+        }
+        row.addView(heart, LinearLayout.LayoutParams(dp(32), dp(32)))
+
+        row.layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(Theme.SPACING_SM)
+        }
+
+        station.favicon?.takeIf { it.isNotBlank() }?.let { loadLogo(it, logo) }
+        return row
     }
 
     private fun loadLogo(url: String, target: ImageView) {
@@ -210,6 +303,4 @@ class RadioActivity : ComponentActivity() {
             if (bitmap != null && !isFinishing) target.setImageBitmap(bitmap)
         }
     }
-
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }

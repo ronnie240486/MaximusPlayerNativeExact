@@ -1,7 +1,7 @@
 package com.interactiveplayer.app
 
 import android.graphics.BitmapFactory
-import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
 import android.widget.ImageView
@@ -17,16 +17,20 @@ import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
 
+/**
+ * Placar, portado das cores aproximadas anteriores para o Theme oficial.
+ *
+ * `frontend/app/placar.tsx` (603 linhas) também tem abas de classificação
+ * e detalhes de partida que esta versão não replica — mantém o formato
+ * de lista de jogos por dia que já existia, só com o visual correto
+ * (cards arredondados, cores do Theme.kt) em vez da paleta improvisada.
+ */
 class ScoreActivity : ComponentActivity() {
-    private val white = Color.rgb(242, 244, 248)
-    private val muted = Color.rgb(168, 177, 196)
-    private val panel = Color.rgb(28, 40, 70)
-    private val cyan = Color.rgb(53, 222, 231)
-    private val background = Color.rgb(8, 16, 30)
+
     private lateinit var matches: LinearLayout
     private lateinit var status: TextView
+    private lateinit var sportList: LinearLayout
     private var selected = SportsClient.sports.first()
-    private var selectedView: TextView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,68 +41,92 @@ class ScoreActivity : ComponentActivity() {
     private fun buildView(): LinearLayout {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(this@ScoreActivity.background)
-            setPadding(dp(24), dp(18), dp(24), dp(18))
+            setBackgroundColor(Theme.black)
+            setPadding(
+                dp(Theme.SPACING_MD),
+                dp(Theme.SPACING_MD),
+                dp(Theme.SPACING_MD),
+                dp(Theme.SPACING_MD)
+            )
         }
         root.addView(TextView(this).apply {
-            text = "‹  Jogos do Dia / Placar"
-            textSize = 27f
-            setTextColor(white)
+            setText("‹  Jogos do Dia / Placar")
+            textSize = 20f
+            setTextColor(Theme.white)
+            setTypeface(Typeface.DEFAULT_BOLD)
             isFocusable = true
+            isClickable = true
             setOnClickListener { finish() }
-        }, LinearLayout.LayoutParams(-1, dp(64)))
-        status = TextView(this).apply { textSize = 15f; setTextColor(muted); setPadding(0, 0, 0, dp(8)) }
-        root.addView(status, LinearLayout.LayoutParams(-1, dp(38)))
-        val body = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val sportScroll = ScrollView(this)
-        val sportList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(8), dp(16), 0) }
-        SportsClient.sports.forEach { sport ->
-            val item = TextView(this).apply {
-                text = sport.label
-                textSize = 16f
-                setTextColor(if (sport.key == selected.key) Color.BLACK else white)
-                setBackgroundColor(if (sport.key == selected.key) cyan else panel)
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(16), 0, dp(10), 0)
-                isFocusable = true
-                setOnFocusChangeListener { view, focused ->
-                    if (focused && sport.key != selected.key) view.setBackgroundColor(Color.rgb(43, 73, 96))
-                    else view.setBackgroundColor(if (sport.key == selected.key) cyan else panel)
-                }
-                setOnClickListener {
-                    selected = sport
-                    selectedView = this
-                    refreshSportStyles(sportList)
-                    loadSport(sport)
-                }
-            }
-            if (sport.key == selected.key) selectedView = item
-            sportList.addView(item, LinearLayout.LayoutParams(dp(250), dp(54)).apply { setMargins(0, 0, 0, dp(7)) })
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(Theme.SPACING_SM) })
+
+        status = TextView(this).apply {
+            textSize = 12f
+            setTextColor(Theme.textSecondary)
         }
+        root.addView(status, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(Theme.SPACING_SM)
+        })
+
+        val body = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+
+        val sportScroll = ScrollView(this)
+        sportList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        SportsClient.sports.forEach { sport -> sportList.addView(sportChip(sport)) }
         sportScroll.addView(sportList)
-        body.addView(sportScroll, LinearLayout.LayoutParams(dp(270), 0, 1f))
+        body.addView(sportScroll, LinearLayout.LayoutParams(dp(180), -1).apply {
+            rightMargin = dp(Theme.SPACING_MD)
+        })
+
         val matchScroll = ScrollView(this)
-        matches = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(8), dp(8), 0, dp(16)) }
+        matches = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         matchScroll.addView(matches)
-        body.addView(matchScroll, LinearLayout.LayoutParams(0, 0, 1f))
+        body.addView(matchScroll, LinearLayout.LayoutParams(0, -1, 1f))
+
         root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
         return root
     }
 
-    private fun refreshSportStyles(list: LinearLayout) {
-        for (index in 0 until list.childCount) {
-            val view = list.getChildAt(index) as TextView
-            val sport = SportsClient.sports[index]
-            view.setTextColor(if (sport.key == selected.key) Color.BLACK else white)
-            view.setBackgroundColor(if (sport.key == selected.key) cyan else panel)
+    private fun sportChip(sport: SportsClient.Sport): TextView =
+        TextView(this).apply {
+            setText(sport.label)
+            textSize = 14f
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(Theme.SPACING_MD), 0, dp(Theme.SPACING_SM), 0)
+            refreshChip(this, sport)
+            isFocusable = true
+            isClickable = true
+            setOnClickListener {
+                selected = sport
+                refreshAllChips()
+                loadSport(sport)
+            }
+            layoutParams = LinearLayout.LayoutParams(-1, dp(46)).apply {
+                bottomMargin = dp(Theme.SPACING_SM)
+            }
+        }
+
+    private fun refreshChip(chip: TextView, sport: SportsClient.Sport) {
+        val active = sport.key == selected.key
+        chip.setTextColor(if (active) Theme.black else Theme.white)
+        chip.background = roundRect(if (active) Theme.accentCyan else Theme.darkSurface, Theme.RADIUS_SM)
+    }
+
+    private fun refreshAllChips() {
+        for (index in 0 until sportList.childCount) {
+            refreshChip(sportList.getChildAt(index) as TextView, SportsClient.sports[index])
         }
     }
 
     private fun loadSport(sport: SportsClient.Sport) {
-        status.text = "Carregando ${sport.label}..."
+        status.setText("Carregando ${sport.label}...")
         matches.removeAllViews()
         matches.gravity = Gravity.CENTER
-        matches.addView(ProgressBar(this).apply { indeterminateTintList = android.content.res.ColorStateList.valueOf(cyan) }, LinearLayout.LayoutParams(-1, dp(80)))
+        matches.addView(
+            ProgressBar(this).apply {
+                indeterminateTintList = android.content.res.ColorStateList.valueOf(Theme.accentCyan)
+            },
+            LinearLayout.LayoutParams(-1, dp(80))
+        )
         lifecycleScope.launch {
             val events = withContext(Dispatchers.IO) { SportsClient.fetchDays(sport) }
             renderEvents(events)
@@ -109,65 +137,85 @@ class ScoreActivity : ComponentActivity() {
         matches.removeAllViews()
         matches.gravity = Gravity.TOP
         if (events.isEmpty()) {
-            status.text = "Nenhum jogo encontrado nos últimos e próximos dias."
+            status.setText("Nenhum jogo encontrado nos últimos e próximos dias.")
             matches.addView(TextView(this).apply {
-                text = "Pode ser que este esporte esteja fora de temporada ou sem partidas nesta semana."
-                textSize = 18f
-                setTextColor(muted)
+                setText("Pode ser que este esporte esteja fora de temporada ou sem partidas nesta semana.")
+                textSize = 14f
+                setTextColor(Theme.textMuted)
                 gravity = Gravity.CENTER
-                setPadding(dp(24), dp(24), dp(24), dp(24))
+                setPadding(dp(Theme.SPACING_LG), dp(Theme.SPACING_LG), dp(Theme.SPACING_LG), dp(Theme.SPACING_LG))
             }, LinearLayout.LayoutParams(-1, dp(160)))
             return
         }
-        status.text = "${events.size} partidas encontradas — dados atualizados online"
+        status.setText("${events.size} partidas encontradas — dados atualizados online")
+
         var currentDate = ""
         events.forEach { event ->
             if (event.date != currentDate) {
                 currentDate = event.date
                 matches.addView(TextView(this).apply {
-                    text = dayLabel(event.date)
-                    textSize = 15f
-                    setTextColor(cyan)
-                    setPadding(dp(4), dp(12), 0, dp(8))
-                }, LinearLayout.LayoutParams(-1, dp(42)))
+                    setText(dayLabel(event.date))
+                    textSize = 13f
+                    setTextColor(Theme.accentCyan)
+                    setTypeface(Typeface.DEFAULT_BOLD)
+                    setPadding(dp(4), dp(Theme.SPACING_SM), 0, dp(6))
+                })
             }
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setBackgroundColor(panel)
-                setPadding(dp(16), dp(10), dp(16), dp(10))
-                isFocusable = true
-                setOnFocusChangeListener { view, focused -> view.setBackgroundColor(if (focused) Color.rgb(45, 75, 100) else panel) }
-            }
-            val teams = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL }
-            teams.addView(teamRow(event.home, event.homeLogo))
-            teams.addView(teamRow(event.away, event.awayLogo))
-            card.addView(teams, LinearLayout.LayoutParams(0, -1, 1f))
-            val score = TextView(this).apply {
-                val hasScore = event.homeScore != null || event.awayScore != null
-                text = if (hasScore) "${event.homeScore ?: "-"}\n${event.awayScore ?: "-"}" else event.time ?: "--:--"
-                textSize = if (hasScore) 18f else 15f
-                setTextColor(if (hasScore) cyan else white)
-                gravity = Gravity.CENTER
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-            }
-            card.addView(score, LinearLayout.LayoutParams(dp(90), -1))
-            matches.addView(card, LinearLayout.LayoutParams(-1, dp(88)).apply { setMargins(0, 0, 0, dp(8)) })
+            matches.addView(buildMatchCard(event))
         }
-        matches.getChildAt(1)?.requestFocus()
+    }
+
+    private fun buildMatchCard(event: SportsClient.Event): LinearLayout {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = roundRect(Theme.darkSurface, Theme.RADIUS_MD)
+            setPadding(
+                dp(Theme.SPACING_MD),
+                dp(Theme.SPACING_SM),
+                dp(Theme.SPACING_MD),
+                dp(Theme.SPACING_SM)
+            )
+            isFocusable = true
+        }
+
+        val teams = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        teams.addView(teamRow(event.home, event.homeLogo))
+        teams.addView(teamRow(event.away, event.awayLogo))
+        card.addView(teams, LinearLayout.LayoutParams(0, -2, 1f))
+
+        val hasScore = event.homeScore != null || event.awayScore != null
+        card.addView(TextView(this).apply {
+            setText(if (hasScore) "${event.homeScore ?: "-"}\n${event.awayScore ?: "-"}" else event.time ?: "--:--")
+            textSize = if (hasScore) 16f else 13f
+            setTextColor(if (hasScore) Theme.accentCyan else Theme.white)
+            gravity = Gravity.CENTER
+            setTypeface(Typeface.DEFAULT_BOLD)
+        }, LinearLayout.LayoutParams(dp(64), -2))
+
+        card.layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(Theme.SPACING_SM)
+        }
+        return card
     }
 
     private fun teamRow(name: String, logoUrl: String?): LinearLayout {
         val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        val logo = ImageView(this).apply { setBackgroundColor(Color.rgb(48, 60, 84)); scaleType = ImageView.ScaleType.CENTER_INSIDE; contentDescription = name }
-        row.addView(logo, LinearLayout.LayoutParams(dp(28), dp(28)))
+        val logo = ImageView(this).apply {
+            background = roundRect(Theme.darkSurfaceAlt, 6)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = name
+        }
+        row.addView(logo, LinearLayout.LayoutParams(dp(24), dp(24)))
         row.addView(TextView(this).apply {
-            text = name
-            textSize = 15f
-            setTextColor(white)
+            setText(name)
+            textSize = 13f
+            setTextColor(Theme.white)
             maxLines = 1
-            setPadding(dp(10), 0, 0, 0)
-        }, LinearLayout.LayoutParams(0, dp(34), 1f))
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(Theme.SPACING_SM) })
         logoUrl?.let { loadLogo(it, logo) }
         return row
     }
@@ -197,6 +245,4 @@ class ScoreActivity : ComponentActivity() {
             else -> date
         }
     }
-
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }
