@@ -68,7 +68,7 @@ object CatalogRepository {
             lastMessage = "Playlist M3U carregada."
             return direct
         }
-        val xtream = fetchXtreamParallel(playlist.url)
+        val xtream = fetchXtreamParallel(context, playlist.url)
         if (xtream.isNotEmpty()) {
             lastMessage = "Catálogo Xtream carregado pelo painel."
             return xtream
@@ -95,7 +95,7 @@ object CatalogRepository {
      * espera de cada chamada individual, e era a causa real da Home
      * demorar tanto pra aparecer.
      */
-    private fun fetchXtreamParallel(playlistUrl: String): List<M3uItem> = runCatching {
+    private fun fetchXtreamParallel(context: Context, playlistUrl: String): List<M3uItem> = runCatching {
         val parsed = URL(playlistUrl)
         val params = parsed.query.orEmpty().split('&').mapNotNull { part ->
             val pieces = part.split('=', limit = 2)
@@ -104,6 +104,10 @@ object CatalogRepository {
         val username = params["username"] ?: params["user"] ?: return@runCatching emptyList()
         val password = params["password"] ?: params["pass"] ?: return@runCatching emptyList()
         val server = "${parsed.protocol}://${parsed.authority}"
+        // Salva aqui — é o único lugar que já faz esse parsing com
+        // sucesso. XtreamInfoClient/EpgClient usam depois, sem precisar
+        // adivinhar de volta a partir da URL de cada item.
+        XtreamCredentials.save(context, server, username, password)
 
         kotlinx.coroutines.runBlocking {
             coroutineScope {
@@ -128,7 +132,7 @@ object CatalogRepository {
                     val group = liveCategories[item.optString("category_id")] ?: "Canais"
                     val streamId = item.optString("stream_id")
                     val url = item.optString("direct_source").ifBlank { "$server/live/$username/$password/$streamId.ts" }
-                    if (streamId.isNotBlank()) result += M3uItem(name, group, item.optString("stream_icon").ifBlank { null }, url, M3uItem.Kind.CHANNEL)
+                    if (streamId.isNotBlank()) result += M3uItem(name, group, item.optString("stream_icon").ifBlank { null }, url, M3uItem.Kind.CHANNEL, streamId)
                 }
                 for (index in 0 until movies.length()) {
                     val item = movies.optJSONObject(index) ?: continue
@@ -136,14 +140,14 @@ object CatalogRepository {
                     val group = vodCategories[item.optString("category_id")] ?: "Filmes"
                     val streamId = item.optString("stream_id")
                     val ext = item.optString("container_extension").ifBlank { "mp4" }
-                    if (streamId.isNotBlank()) result += M3uItem(name, group, item.optString("stream_icon").ifBlank { null }, "$server/movie/$username/$password/$streamId.$ext", classifyMovie(name, group))
+                    if (streamId.isNotBlank()) result += M3uItem(name, group, item.optString("stream_icon").ifBlank { null }, "$server/movie/$username/$password/$streamId.$ext", classifyMovie(name, group), streamId)
                 }
                 for (index in 0 until series.length()) {
                     val item = series.optJSONObject(index) ?: continue
                     val name = item.optString("name").ifBlank { "Série" }
                     val group = seriesCategories[item.optString("category_id")] ?: "Séries"
                     val seriesId = item.optString("series_id")
-                    if (seriesId.isNotBlank()) result += M3uItem(name, group, item.optString("cover").ifBlank { null }, "$server/series/$username/$password/$seriesId.mp4", classifySeries(name, group))
+                    if (seriesId.isNotBlank()) result += M3uItem(name, group, item.optString("cover").ifBlank { null }, "$server/series/$username/$password/$seriesId.mp4", classifySeries(name, group), seriesId)
                 }
                 result
             }

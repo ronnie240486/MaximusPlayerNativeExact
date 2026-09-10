@@ -1,5 +1,6 @@
 package com.interactiveplayer.app
 
+import android.content.Context
 import android.util.Base64
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -12,11 +13,10 @@ import java.util.Locale
  * Guia de programação (EPG) de um canal, via `get_short_epg` do Xtream
  * — o "Agora" / "A seguir" que aparece no player ao vivo do original.
  *
- * Reaproveita a mesma extração de servidor/usuário/senha/stream_id da
- * URL que o XtreamInfoClient já faz. Como alguns painéis preenchem
- * `direct_source` com uma URL que não segue o padrão
- * `live/usuario/senha/id.ext`, o EPG simplesmente não aparece nesses
- * casos — sem quebrar o player, só sem a informação extra.
+ * Usa `item.streamId` + `XtreamCredentials`, salvos pelo
+ * CatalogRepository, em vez de tentar extrair tudo de volta da URL do
+ * canal — que falhava sempre que o painel preenchia `direct_source`
+ * com um formato diferente do padrão live/usuário/senha/id.ext.
  */
 object EpgClient {
 
@@ -28,12 +28,14 @@ object EpgClient {
     )
 
     /** Deve ser chamado fora da thread principal. */
-    fun fetchSchedule(item: M3uItem, limit: Int = 6): List<Program> {
-        val parts = parseLiveUrl(item.url) ?: return emptyList()
-        val endpoint = "${parts.server}/player_api.php" +
-            "?username=${encode(parts.username)}" +
-            "&password=${encode(parts.password)}" +
-            "&action=get_short_epg&stream_id=${parts.streamId}&limit=$limit"
+    fun fetchSchedule(context: Context, item: M3uItem, limit: Int = 6): List<Program> {
+        val streamId = item.streamId ?: return emptyList()
+        val credentials = XtreamCredentials.load(context) ?: return emptyList()
+
+        val endpoint = "${credentials.server}/player_api.php" +
+            "?username=${encode(credentials.username)}" +
+            "&password=${encode(credentials.password)}" +
+            "&action=get_short_epg&stream_id=$streamId&limit=$limit"
 
         val body = readText(endpoint) ?: return emptyList()
         return runCatching {
@@ -43,7 +45,10 @@ object EpgClient {
             buildList {
                 for (index in 0 until listings.length()) {
                     val entry = listings.optJSONObject(index) ?: continue
-                    val title = decodeBase64(entry.optString("title")).ifBlank { "Programação" }
+                    val title = entry.optStringOrNull("title")
+                        ?.let { decodeBase64(it) }
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "Programação"
                     val startTs = entry.optLong("start_timestamp")
                     val endTs = entry.optLong("stop_timestamp")
                     add(
@@ -69,18 +74,6 @@ object EpgClient {
             SimpleDateFormat("HH:mm", Locale("pt", "BR")).format(epochSeconds * 1000)
         }.getOrDefault("--:--")
     }
-
-    private data class Parts(val server: String, val username: String, val password: String, val streamId: String)
-
-    private fun parseLiveUrl(url: String): Parts? = runCatching {
-        val parsed = URL(url)
-        val segments = parsed.path.trim('/').split('/')
-        if (segments.size < 4 || segments[0] != "live") return@runCatching null
-        val streamId = segments[3].substringBeforeLast('.')
-        if (streamId.isBlank() || streamId.any { !it.isDigit() }) return@runCatching null
-        val port = if (parsed.port > 0) ":${parsed.port}" else ""
-        Parts("${parsed.protocol}://${parsed.host}$port", segments[1], segments[2], streamId)
-    }.getOrNull()
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 

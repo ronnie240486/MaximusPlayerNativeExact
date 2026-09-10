@@ -505,7 +505,7 @@ class MainActivity : ComponentActivity() {
         if (current != null) {
             val requestedIndex = heroIndex
             lifecycleScope.launch {
-                val info = withContext(Dispatchers.IO) { ContentInfoClient.fetch(current) }
+                val info = withContext(Dispatchers.IO) { ContentInfoClient.fetch(this@MainActivity, current) }
                 if (info == null || isFinishing) return@launch
                 if (heroIndex != requestedIndex) return@launch
                 val stillThere = heroHost ?: return@launch

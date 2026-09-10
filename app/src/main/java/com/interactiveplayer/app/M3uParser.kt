@@ -9,6 +9,11 @@ data class M3uItem(
     val logo: String?,
     val url: String,
     val kind: Kind,
+    // Guardado só quando vem direto do Xtream (não de playlist M3U comum).
+    // Evita ter que tentar extrair o ID de volta da URL — que falha
+    // sempre que o painel preenche "direct_source" com um formato
+    // diferente do padrão live/movie/series/usuario/senha/id.ext.
+    val streamId: String? = null,
 ) {
     enum class Kind { CHANNEL, MOVIE, SERIES, KIDS }
 }

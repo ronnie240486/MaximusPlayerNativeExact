@@ -9,6 +9,7 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.view.Gravity
 import android.widget.ProgressBar
 import androidx.activity.ComponentActivity
@@ -108,47 +109,121 @@ class ChannelDetailsActivity : ComponentActivity() {
             }
         )
 
-        // "Agora" / "A seguir" — igual à referência do original. Fica de
-        // fora quando o painel não segue o padrão de URL esperado (ver
-        // EpgClient), sem quebrar o player nesse caso.
-        val epgText = android.widget.TextView(this).apply {
+        // Guia de programação — Agora/A seguir em texto + faixa horizontal
+        // com os próximos programas, cada um com um sino de lembrete.
+        // Fica de fora quando o painel não expõe get_short_epg pra esse
+        // canal, sem quebrar o player nesse caso.
+        val epgBlock = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+        val epgSummary = android.widget.TextView(this).apply {
             textSize = 12f
             setTextColor(Theme.textSecondary)
             setLineSpacing(dpF(4f), 1f)
             maxLines = 2
-            visibility = View.GONE
         }
+        epgBlock.addView(epgSummary, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(8)
+        })
+        val epgStrip = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val epgScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(epgStrip)
+        }
+        epgBlock.addView(epgScroll, LinearLayout.LayoutParams(-1, -2))
+
         root.addView(
-            epgText,
+            epgBlock,
             FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
                 leftMargin = dp(Theme.SPACING_MD)
                 rightMargin = dp(Theme.SPACING_MD)
                 bottomMargin = dp(66)
             }
         )
-        loadEpg(epgText)
+        loadEpg(epgBlock, epgSummary, epgStrip)
 
         WatchHistoryStore.record(this, item)
         return root
     }
 
-    private fun loadEpg(target: android.widget.TextView) {
+    private fun loadEpg(block: LinearLayout, summary: android.widget.TextView, strip: LinearLayout) {
         lifecycleScope.launch {
             val programs = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                EpgClient.fetchSchedule(item)
+                EpgClient.fetchSchedule(this@ChannelDetailsActivity, item)
             }
             if (programs.isEmpty() || isFinishing) return@launch
+
             val now = programs.firstOrNull { it.isNow }
             val next = programs.firstOrNull { !it.isNow }
             val lines = buildList {
                 now?.let { add("Agora: ${it.title} (${it.startLabel}–${it.endLabel})") }
                 next?.let { add("A seguir: ${it.title} (${it.startLabel})") }
             }
-            if (lines.isNotEmpty()) {
-                target.setText(lines.joinToString("\n"))
-                target.visibility = View.VISIBLE
+            if (lines.isEmpty()) return@launch
+            summary.setText(lines.joinToString("\n"))
+
+            programs.forEach { program -> strip.addView(buildEpgCard(program)) }
+            block.visibility = View.VISIBLE
+        }
+    }
+
+    /** Card AGORA/A SEGUIR com logo do canal, horário e sino de lembrete. */
+    private fun buildEpgCard(program: EpgClient.Program): View {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundRect(Theme.darkSurface, Theme.RADIUS_SM)
+            setPadding(dp(Theme.SPACING_SM), dp(Theme.SPACING_SM), dp(Theme.SPACING_SM), dp(Theme.SPACING_SM))
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        header.addView(android.widget.TextView(this).apply {
+            setText(if (program.isNow) "AGORA" else "A SEGUIR")
+            textSize = 10f
+            setTypeface(android.graphics.Typeface.DEFAULT_BOLD)
+            setTextColor(if (program.isNow) Theme.accentCyan else Theme.textMuted)
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+
+        // Sino: marca/desmarca lembrete visualmente. Ainda não dispara
+        // notificação de verdade — só o toggle visual por enquanto.
+        val bell = android.widget.TextView(this).apply {
+            setText("🔔")
+            textSize = 12f
+            alpha = 0.4f
+            isFocusable = true
+            isClickable = true
+            setOnClickListener {
+                alpha = if (alpha > 0.5f) 0.4f else 1f
+                android.widget.Toast.makeText(
+                    this@ChannelDetailsActivity,
+                    if (alpha > 0.5f) "Lembrete marcado (não notifica ainda, só visual)" else "Lembrete removido",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
             }
         }
+        header.addView(bell)
+        card.addView(header, LinearLayout.LayoutParams(dp(150), -2))
+
+        card.addView(android.widget.TextView(this).apply {
+            setText(program.title)
+            textSize = 12f
+            setTextColor(Theme.white)
+            maxLines = 2
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+
+        card.addView(android.widget.TextView(this).apply {
+            setText("${program.startLabel}–${program.endLabel}")
+            textSize = 10f
+            setTextColor(Theme.textMuted)
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2) })
+
+        card.layoutParams = LinearLayout.LayoutParams(dp(150), -2).apply {
+            rightMargin = dp(Theme.SPACING_SM)
+        }
+        return card
     }
 
     private fun startPlayback() {

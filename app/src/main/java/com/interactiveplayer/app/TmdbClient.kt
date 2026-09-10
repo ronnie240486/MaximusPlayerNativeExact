@@ -60,12 +60,12 @@ object TmdbClient {
             val genreName = genres?.optJSONObject(0)?.optString("name")
 
             Info(
-                plot = first.optString("overview").ifBlank { null },
-                genre = genreName,
+                plot = first.optStringOrNull("overview"),
+                genre = genreName?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) },
                 rating = first.optDouble("vote_average").takeIf { !it.isNaN() && it > 0 }
                     ?.let { "%.1f".format(it) },
-                year = first.optString(releaseField).takeIf { it.length >= 4 }?.substring(0, 4),
-                backdrop = first.optString("backdrop_path").ifBlank { null }
+                year = first.optStringOrNull(releaseField)?.takeIf { it.length >= 4 }?.substring(0, 4),
+                backdrop = first.optStringOrNull("backdrop_path")
                     ?.let { "https://image.tmdb.org/t/p/w780$it" },
             )
         }.getOrNull()

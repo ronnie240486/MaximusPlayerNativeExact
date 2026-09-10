@@ -1,5 +1,6 @@
 package com.interactiveplayer.app
 
+import android.content.Context
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -9,10 +10,10 @@ import java.net.URLEncoder
  * Busca sinopse/nota/ano/backdrop de um título, como o hero da Home faz
  * em `frontend/app/home.tsx` (`xtream.vodInfo` / `xtream.seriesInfo`).
  *
- * O M3uItem do nativo não guarda credenciais nem o stream_id separados —
- * mas o CatalogRepository monta a URL no formato
- * `$server/movie/$username/$password/$streamId.$ext`, então dá pra
- * recuperar tudo de volta a partir dela, sem precisar mexer no catálogo.
+ * Usa `item.streamId` + `XtreamCredentials` (as duas coisas que o
+ * CatalogRepository já garante de verdade) em vez de tentar extrair
+ * tudo de volta da URL de cada item — que falhava sempre que o painel
+ * preenchia `direct_source` com um formato diferente do esperado.
  */
 object XtreamInfoClient {
 
@@ -30,42 +31,38 @@ object XtreamInfoClient {
     private val memoryCache = HashMap<String, Info>()
 
     /** Deve ser chamado fora da thread principal. */
-    fun fetch(item: M3uItem): Info? {
+    fun fetch(context: Context, item: M3uItem): Info? {
         memoryCache[item.url]?.let { return it }
+        if (item.kind == M3uItem.Kind.CHANNEL) return null
 
-        val parts = parse(item.url) ?: return null
-        val action = when (item.kind) {
-            M3uItem.Kind.SERIES -> "get_series_info"
-            else -> "get_vod_info"
-        }
-        val idParam = when (item.kind) {
-            M3uItem.Kind.SERIES -> "series_id"
-            else -> "vod_id"
-        }
+        val streamId = item.streamId ?: parseStreamIdFromUrl(item.url) ?: return null
+        val credentials = XtreamCredentials.load(context) ?: return null
 
-        val endpoint = "${parts.server}/player_api.php" +
-            "?username=${encode(parts.username)}" +
-            "&password=${encode(parts.password)}" +
-            "&action=$action&$idParam=${parts.streamId}"
+        val action = if (item.kind == M3uItem.Kind.SERIES) "get_series_info" else "get_vod_info"
+        val idParam = if (item.kind == M3uItem.Kind.SERIES) "series_id" else "vod_id"
+
+        val endpoint = "${credentials.server}/player_api.php" +
+            "?username=${encode(credentials.username)}" +
+            "&password=${encode(credentials.password)}" +
+            "&action=$action&$idParam=$streamId"
 
         val body = readText(endpoint) ?: return null
         val info = runCatching {
             val root = JSONObject(body)
             val node = root.optJSONObject("info") ?: return@runCatching null
             Info(
-                plot = node.optString("plot").ifBlank { null },
-                genre = node.optString("genre").ifBlank { null },
-                rating = node.optString("rating").ifBlank { null },
+                plot = node.optStringOrNull("plot"),
+                genre = node.optStringOrNull("genre"),
+                rating = node.optStringOrNull("rating"),
                 // O Xtream é inconsistente no nome desse campo, então o
                 // original tenta os três — aqui é a mesma coisa.
-                releaseDate = node.optString("releasedate")
-                    .ifBlank { node.optString("release_date") }
-                    .ifBlank { node.optString("releaseDate") }
-                    .ifBlank { null },
+                releaseDate = node.optStringOrNull("releasedate")
+                    ?: node.optStringOrNull("release_date")
+                    ?: node.optStringOrNull("releaseDate"),
                 backdrop = node.optJSONArray("backdrop_path")
                     ?.takeIf { it.length() > 0 }
                     ?.optString(0)
-                    ?.ifBlank { null },
+                    ?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) },
             )
         }.getOrNull() ?: return null
 
@@ -73,37 +70,18 @@ object XtreamInfoClient {
         return info
     }
 
-    private data class Parts(
-        val server: String,
-        val username: String,
-        val password: String,
-        val streamId: String,
-    )
-
     /**
-     * Quebra `http://host:porta/movie/usuario/senha/12345.mp4` nas suas
-     * partes. Devolve null para playlists M3U comuns, que não seguem esse
-     * formato — nesse caso o hero simplesmente fica sem sinopse.
+     * Retrocompatibilidade: itens que ainda não têm `streamId` guardado
+     * (playlist M3U comum, ou cache antigo em disco) caem de volta pra
+     * tentar extrair da URL — melhor que nada.
      */
-    private fun parse(url: String): Parts? = runCatching {
+    private fun parseStreamIdFromUrl(url: String): String? = runCatching {
         val parsed = URL(url)
         val segments = parsed.path.trim('/').split('/')
         if (segments.size < 4) return@runCatching null
-
-        val type = segments[0]
-        if (type != "movie" && type != "series" && type != "live") return@runCatching null
-
-        val fileName = segments[3]
-        val streamId = fileName.substringBeforeLast('.')
-        if (streamId.isBlank() || streamId.any { !it.isDigit() }) return@runCatching null
-
-        val port = if (parsed.port > 0) ":${parsed.port}" else ""
-        Parts(
-            server = "${parsed.protocol}://${parsed.host}$port",
-            username = segments[1],
-            password = segments[2],
-            streamId = streamId,
-        )
+        if (segments[0] !in listOf("movie", "series", "live")) return@runCatching null
+        val streamId = segments[3].substringBeforeLast('.')
+        streamId.takeIf { it.isNotBlank() && it.all { ch -> ch.isDigit() } }
     }.getOrNull()
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")

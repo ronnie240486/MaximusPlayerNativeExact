@@ -1,5 +1,7 @@
 package com.interactiveplayer.app
 
+import android.content.Context
+
 /**
  * Metadados de um filme/série, combinando Xtream (fonte primária) com
  * TMDB como reforço nos campos que o Xtream deixou vazios. Usado tanto
@@ -17,8 +19,8 @@ object ContentInfoClient {
     )
 
     /** Deve ser chamado fora da thread principal. */
-    fun fetch(item: M3uItem): Info? {
-        val xtream = XtreamInfoClient.fetch(item)
+    fun fetch(context: Context, item: M3uItem): Info? {
+        val xtream = XtreamInfoClient.fetch(context, item)
 
         // Já veio tudo do painel — não precisa nem tentar o TMDB.
         val complete = xtream != null &&
