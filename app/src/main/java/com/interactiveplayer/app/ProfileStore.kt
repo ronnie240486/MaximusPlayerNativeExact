@@ -22,8 +22,17 @@ class ProfileStore(context: Context) {
 
     fun save(profile: NativeProfile) {
         val next = all().filterNot { it.name.equals(profile.name, ignoreCase = true) } + profile
+        persist(next)
+    }
+
+    /** Usado pelo botão EXCLUIR PERFIL da tela de gerenciar. */
+    fun remove(name: String) {
+        persist(all().filterNot { it.name.equals(name, ignoreCase = true) })
+    }
+
+    private fun persist(profiles: List<NativeProfile>) {
         val json = JSONArray()
-        next.forEach {
+        profiles.forEach {
             json.put(JSONObject().apply {
                 put("name", it.name)
                 put("avatar", it.avatar)

@@ -8,12 +8,29 @@ android {
     compileSdk = 34
     buildToolsVersion = "33.0.2"
 
+    signingConfigs {
+        // O Actions gera uma keystore de debug nova a cada execução, e
+        // assinatura diferente faz o Android recusar a atualização —
+        // era isso que obrigava a desinstalar o app a cada versão. Com
+        // uma keystore fixa versionada junto, todo APK sai com a mesma
+        // assinatura e instala por cima. Ela é só de debug: a senha é
+        // pública de propósito e não serve pra publicar na Play Store.
+        getByName("debug") {
+            storeFile = rootProject.file("keystore/maximus-debug.keystore")
+            storePassword = "android"
+            keyAlias = "maximusdebug"
+            keyPassword = "android"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.interactiveplayer.app"
         minSdk = 23
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        // Sobe sozinho a cada build do Actions, senão o Android trata
+        // como "mesma versão" e pode recusar a instalação por cima.
+        versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+        versionName = "1.0.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
