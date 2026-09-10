@@ -65,6 +65,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        UiSound.init(this)
         setContentView(buildRoot())
         lifecycleScope.launch {
             val cachedItems = CatalogRepository.load(this@MainActivity)
@@ -84,6 +85,11 @@ class MainActivity : ComponentActivity() {
                 if (items.isNotEmpty()) renderCatalogHome(items)
             }
         }
+    }
+
+    override fun onDestroy() {
+        UiSound.release()
+        super.onDestroy()
     }
 
     // ---------------------------------------------------------------
@@ -263,7 +269,10 @@ class MainActivity : ComponentActivity() {
                     icon.setTextColor(if (highlight) Theme.accentCyan else Theme.textSecondary)
                     text.setTextColor(if (highlight) Theme.accentCyan else Theme.textSecondary)
                 }
-                setOnClickListener { openNavTarget(label) }
+                setOnClickListener {
+                    UiSound.click()
+                    openNavTarget(label)
+                }
             }
 
             inner.addView(
@@ -496,7 +505,7 @@ class MainActivity : ComponentActivity() {
         if (current != null) {
             val requestedIndex = heroIndex
             lifecycleScope.launch {
-                val info = withContext(Dispatchers.IO) { XtreamInfoClient.fetch(current) }
+                val info = withContext(Dispatchers.IO) { ContentInfoClient.fetch(current) }
                 if (info == null || isFinishing) return@launch
                 if (heroIndex != requestedIndex) return@launch
                 val stillThere = heroHost ?: return@launch
@@ -518,7 +527,7 @@ class MainActivity : ComponentActivity() {
     private fun buildHeroContent(
         current: M3uItem?,
         total: Int,
-        info: XtreamInfoClient.Info?
+        info: ContentInfoClient.Info?
     ): View {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -747,7 +756,10 @@ class MainActivity : ComponentActivity() {
             isFocusable = true
             isClickable = true
             background = focusBackground()
-            setOnClickListener { openItem(item) }
+            setOnClickListener {
+                UiSound.click()
+                openItem(item)
+            }
         }
 
         val card = ImageView(this).apply {
@@ -776,7 +788,10 @@ class MainActivity : ComponentActivity() {
             isFocusable = true
             isClickable = true
             background = focusBackground()
-            setOnClickListener { openItem(item) }
+            setOnClickListener {
+                UiSound.click()
+                openItem(item)
+            }
         }
 
         val card = FrameLayout(this).apply {

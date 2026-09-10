@@ -42,7 +42,6 @@ class ChannelDetailsActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        hideSystemBars()
 
         item = M3uItem(
             name = intent.getStringExtra("name").orEmpty().ifBlank { "Canal" },
@@ -53,6 +52,11 @@ class ChannelDetailsActivity : ComponentActivity() {
         )
 
         setContentView(buildLayout())
+        // window.insetsController só existe depois que o DecorView é
+        // criado, o que só acontece com setContentView() já chamado - fazer
+        // isso antes derrubava a tela com NullPointerException em alguns
+        // aparelhos.
+        hideSystemBars()
         startPlayback()
     }
 

@@ -177,7 +177,7 @@ class ContentDetailsActivity : ComponentActivity() {
 
     private fun loadExtraInfo() {
         lifecycleScope.launch {
-            val info = withContext(Dispatchers.IO) { XtreamInfoClient.fetch(item) }
+            val info = withContext(Dispatchers.IO) { ContentInfoClient.fetch(item) }
             if (info == null || isFinishing) {
                 plotText.setText("Conteúdo disponível na lista do painel.")
                 return@launch

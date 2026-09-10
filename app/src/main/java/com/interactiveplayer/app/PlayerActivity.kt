@@ -42,12 +42,16 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        hideSystemBars()
 
         mediaUrl = intent.getStringExtra("url").orEmpty()
         mediaTitle = intent.getStringExtra("title").orEmpty()
 
         setContentView(buildLayout())
+        // window.insetsController só existe depois que o DecorView é
+        // criado, o que só acontece com setContentView() já chamado - fazer
+        // isso antes derrubava a tela com NullPointerException em alguns
+        // aparelhos.
+        hideSystemBars()
 
         if (mediaUrl.isBlank()) {
             showError("Não recebi uma URL válida pra reproduzir.")

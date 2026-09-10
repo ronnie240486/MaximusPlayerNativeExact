@@ -56,6 +56,7 @@ class CatalogActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        UiSound.init(this)
         mode = runCatching {
             M3uItem.Kind.valueOf(intent.getStringExtra("mode") ?: "CHANNEL")
         }.getOrDefault(M3uItem.Kind.CHANNEL)
@@ -251,7 +252,13 @@ class CatalogActivity : ComponentActivity() {
         adapter.submit(filtered)
     }
 
+    override fun onDestroy() {
+        UiSound.release()
+        super.onDestroy()
+    }
+
     private fun openItem(item: M3uItem) {
+        UiSound.click()
         WatchHistoryStore.record(this, item)
         if (item.kind == M3uItem.Kind.CHANNEL) {
             startActivity(Intent(this, ChannelDetailsActivity::class.java).apply {
