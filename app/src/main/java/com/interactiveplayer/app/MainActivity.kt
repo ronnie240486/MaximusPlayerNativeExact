@@ -265,7 +265,7 @@ class MainActivity : ComponentActivity() {
 
         val greeting = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         greeting.addView(TextView(this).apply {
-            setText("Olá, ${activeProfileName()}")
+            setText(greetingText())
             textSize = 14f                              // isLandscape fontSize: 14
             setTextColor(Theme.white)
             setTypeface(Typeface.DEFAULT_BOLD)
@@ -326,11 +326,13 @@ class MainActivity : ComponentActivity() {
         return bar
     }
 
-    private fun activeProfileName(): String =
-        runCatching { ProfileStore(this).all().firstOrNull()?.name }
+    /** Sem perfil salvo, a saudação fica só "Olá" — sem nome inventado. */
+    private fun greetingText(): String {
+        val name = runCatching { ProfileStore(this).all().firstOrNull()?.name }
             .getOrNull()
             ?.takeIf { it.isNotBlank() }
-            ?: "Eu"
+        return if (name == null) "Olá" else "Olá, $name"
+    }
 
     private fun currentTime(): String =
         SimpleDateFormat("HH:mm", Locale("pt", "BR")).format(Date())
