@@ -51,11 +51,11 @@ class WelcomeActivity : ComponentActivity() {
 
         val root = FrameLayout(this).apply { setBackgroundColor(Theme.black) }
 
-        val background = ImageView(this).apply {
+        val backgroundImage = ImageView(this).apply {
             setImageBitmap(assetBitmap("default-bg.png"))
             scaleType = ImageView.ScaleType.CENTER_CROP
         }
-        root.addView(background, FrameLayout.LayoutParams(-1, -1))
+        root.addView(backgroundImage, FrameLayout.LayoutParams(-1, -1))
 
         // styles.bgOverlay: rgba(11,15,26,0.55) sem fundo do painel.
         val overlay = View(this).apply {
@@ -79,7 +79,7 @@ class WelcomeActivity : ComponentActivity() {
             setImageBitmap(assetBitmap("app-image.png"))
             scaleType = ImageView.ScaleType.FIT_CENTER
             contentDescription = "Maximus Player"
-            background = roundRect(Color.TRANSPARENT, Theme.RADIUS_LG)
+            this.background = roundRect(Color.TRANSPARENT, Theme.RADIUS_LG)
             clipToOutline = true
         }
         center.addView(logo, LinearLayout.LayoutParams(bannerSide, bannerSide))
@@ -114,7 +114,7 @@ class WelcomeActivity : ComponentActivity() {
 
         session?.bgUrl?.let { url ->
             loadRemoteBitmap(url) { bitmap ->
-                background.setImageBitmap(bitmap)
+                backgroundImage.setImageBitmap(bitmap)
                 // styles.bgOverlayLight: rgba(11,15,26,0.2) quando o fundo
                 // vem do painel, que já é escuro o bastante.
                 overlay.setBackgroundColor(Color.argb(51, 11, 15, 26))
