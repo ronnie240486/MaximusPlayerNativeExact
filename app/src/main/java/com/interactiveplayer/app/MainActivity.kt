@@ -135,23 +135,66 @@ class MainActivity : ComponentActivity() {
         return root
     }
 
+    /**
+     * Reconstruir a Home inteira (hero + 4 faixas, com toda a rede de
+     * pôsteres) a cada `onResume` é o que fazia a tela travar ao voltar
+     * de qualquer outra Activity. Como `CatalogRepository.load` sem
+     * `force` devolve a MESMA lista em cache quando nada mudou, dá pra
+     * comparar por referência e pular a reconstrução pesada — só a
+     * faixa "Continue assistindo" (que pode ter mudado de verdade)
+     * é atualizada sempre, sozinha.
+     */
+    private var lastRenderedCatalog: List<M3uItem>? = null
+
     private fun renderCatalogHome(items: List<M3uItem>) {
         if (!::homeBody.isInitialized || items.isEmpty()) return
+        if (items === lastRenderedCatalog) {
+            refreshContinueWatching()
+            return
+        }
+        lastRenderedCatalog = items
+
         val movies = items.filter { it.kind == M3uItem.Kind.MOVIE }
         val series = items.filter { it.kind == M3uItem.Kind.SERIES }
         val channels = items.filter { it.kind == M3uItem.Kind.CHANNEL }
-        val history = WatchHistoryStore.list(this).map {
-            M3uItem(it.name, it.group, it.logo, it.url, it.kind)
-        }
+        val history = historyAsItems()
 
         homeBody.removeAllViews()
         homeBody.addView(buildHero((movies + series).take(12)))
         if (history.isNotEmpty()) {
-            homeBody.addView(buildSectionRow("CONTINUE ASSISTINDO", history, circular = false))
+            homeBody.addView(buildSectionRow("CONTINUE ASSISTINDO", history, circular = false).apply {
+                tag = "continue"
+            })
         }
         homeBody.addView(buildSectionRow("CANAIS MAIS ASSISTIDOS", channels.take(20), circular = true))
         homeBody.addView(buildSectionRow("FILMES EM ALTA", movies.take(20), circular = false))
         homeBody.addView(buildSectionRow("SÉRIES POPULARES", series.take(20), circular = false))
+    }
+
+    private fun historyAsItems(): List<M3uItem> =
+        WatchHistoryStore.list(this).map { M3uItem(it.name, it.group, it.logo, it.url, it.kind) }
+
+    /** Substitui só a faixa "Continue assistindo" no lugar, sem tocar no resto. */
+    private fun refreshContinueWatching() {
+        val history = historyAsItems()
+        val existingIndex = (0 until homeBody.childCount).firstOrNull {
+            homeBody.getChildAt(it).tag == "continue"
+        }
+        when {
+            history.isEmpty() && existingIndex != null -> homeBody.removeViewAt(existingIndex)
+            history.isNotEmpty() -> {
+                val row = buildSectionRow("CONTINUE ASSISTINDO", history, circular = false).apply {
+                    tag = "continue"
+                }
+                if (existingIndex != null) {
+                    homeBody.removeViewAt(existingIndex)
+                    homeBody.addView(row, existingIndex)
+                } else {
+                    // Logo depois do hero, que é sempre o primeiro filho.
+                    homeBody.addView(row, minOf(1, homeBody.childCount))
+                }
+            }
+        }
     }
 
     // ---------------------------------------------------------------
@@ -795,19 +838,23 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun loadRemoteImage(url: String, target: ImageView) {
+        // O tamanho real do destino (já definido no layout) diz quanto
+        // dá pra reduzir a imagem na decodificação — evita carregar um
+        // pôster de 1200x1600 pixels pra um card de 130dp de largura.
+        val reqWidth = target.layoutParams?.width?.takeIf { it > 0 } ?: dp(posterWidth)
+        val reqHeight = target.layoutParams?.height?.takeIf { it > 0 } ?: dp(posterHeight)
         lifecycleScope.launch {
-            val bitmap = withContext(Dispatchers.IO) {
-                runCatching {
-                    val connection = URL(url).openConnection() as HttpURLConnection
-                    connection.connectTimeout = 5000
-                    connection.readTimeout = 7000
-                    connection.inputStream.use { BitmapFactory.decodeStream(it) }
-                }.getOrNull()
-            }
+            val bitmap = ImageLoader.load(url, reqWidth, reqHeight)
             if (bitmap != null && !isFinishing) target.setImageBitmap(bitmap)
         }
     }
 
-    private fun assetBitmap(name: String) =
-        assets.open("original_media/$name").use { BitmapFactory.decodeStream(it) }
+    // Decodificar default-bg.png de novo a cada rotação do hero (a cada
+    // 7s) travava visivelmente a Home — agora só decodifica uma vez por
+    // nome de arquivo e reaproveita o mesmo Bitmap depois.
+    private val assetBitmapCache = HashMap<String, android.graphics.Bitmap?>()
+
+    private fun assetBitmap(name: String) = assetBitmapCache.getOrPut(name) {
+        runCatching { assets.open("original_media/$name").use { BitmapFactory.decodeStream(it) } }.getOrNull()
+    }
 }

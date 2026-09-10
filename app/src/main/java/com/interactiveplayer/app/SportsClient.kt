@@ -1,5 +1,9 @@
 package com.interactiveplayer.app
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -12,7 +16,9 @@ object SportsClient {
         val key: String,
         val label: String,
         val source: Source,
-        val path: String,
+        // Mais de um caminho junta varias competicoes num so item da UI
+        // (ex.: "Futebol" mistura Brasileirao, Libertadores, europeus...)
+        val paths: List<String>,
     )
 
     enum class Source { ESPN, SPORTS_DB }
@@ -31,32 +37,62 @@ object SportsClient {
     )
 
     val sports = listOf(
-        Sport("futebol", "Futebol (Brasileirão)", Source.ESPN, "soccer/bra.1"),
-        Sport("baseball", "Beisebol", Source.ESPN, "baseball/mlb"),
-        Sport("tennis", "Tênis", Source.ESPN, "tennis/atp"),
-        Sport("nfl", "Futebol Americano", Source.ESPN, "football/nfl"),
-        Sport("volleyball", "Vôlei", Source.SPORTS_DB, "Volleyball"),
-        Sport("mma", "MMA", Source.ESPN, "mma/ufc"),
-        Sport("basketball", "Basquete (NBA)", Source.ESPN, "basketball/nba"),
-        Sport("wnba", "Basquete (WNBA)", Source.ESPN, "basketball/wnba"),
-        Sport("hockey", "Hóquei no Gelo", Source.ESPN, "hockey/nhl"),
-        Sport("golf", "Golfe", Source.ESPN, "golf/pga"),
-        Sport("f1", "Fórmula 1", Source.ESPN, "racing/f1"),
-        Sport("nascar", "Nascar", Source.ESPN, "racing/nascar-premier"),
-        Sport("indycar", "IndyCar", Source.ESPN, "racing/irl"),
+        Sport(
+            "futebol", "Futebol", Source.ESPN,
+            listOf(
+                "soccer/bra.1",             // Brasileirão Série A
+                "soccer/bra.2",             // Brasileirão Série B
+                "soccer/bra.copa_do_brasil",
+                "soccer/conmebol.libertadores",
+                "soccer/conmebol.sudamericana",
+                "soccer/fifa.world",
+                "soccer/concacaf.league",
+                "soccer/eng.1",             // Premier League
+                "soccer/esp.1",             // La Liga
+                "soccer/ita.1",             // Serie A
+                "soccer/ger.1",             // Bundesliga
+                "soccer/fra.1",             // Ligue 1
+                "soccer/uefa.champions",
+                "soccer/uefa.europa",
+                "soccer/por.1",             // Primeira Liga
+            ),
+        ),
+        Sport("baseball", "Beisebol", Source.ESPN, listOf("baseball/mlb")),
+        Sport("tennis", "Tênis", Source.ESPN, listOf("tennis/atp")),
+        Sport("nfl", "Futebol Americano", Source.ESPN, listOf("football/nfl")),
+        Sport("volleyball", "Vôlei", Source.SPORTS_DB, listOf("Volleyball")),
+        Sport("mma", "MMA", Source.ESPN, listOf("mma/ufc")),
+        Sport("basketball", "Basquete (NBA)", Source.ESPN, listOf("basketball/nba")),
+        Sport("wnba", "Basquete (WNBA)", Source.ESPN, listOf("basketball/wnba")),
+        Sport("hockey", "Hóquei no Gelo", Source.ESPN, listOf("hockey/nhl")),
+        Sport("golf", "Golfe", Source.ESPN, listOf("golf/pga")),
+        Sport("f1", "Fórmula 1", Source.ESPN, listOf("racing/f1")),
+        Sport("nascar", "Nascar", Source.ESPN, listOf("racing/nascar-premier")),
+        Sport("indycar", "IndyCar", Source.ESPN, listOf("racing/irl")),
     )
 
-    fun fetchDays(sport: Sport): List<Event> {
+    /**
+     * Um "esporte" pode juntar várias competições (o Futebol soma ~15
+     * ligas) e sempre busca 5 dias. Feito sequencial, isso passa de 70
+     * chamadas HTTP e deixava a aba de Futebol travada por dezenas de
+     * segundos. Todas as chamadas rodam em paralelo aqui.
+     */
+    suspend fun fetchDays(sport: Sport): List<Event> = coroutineScope {
         val today = LocalDate.now(ZoneOffset.UTC)
         val dates = (-2..2).map { today.plusDays(it.toLong()) }
-        return dates.flatMap { date -> fetchDay(sport, date) }.distinctBy { it.id }.sortedWith(compareBy<Event> { it.date }.thenBy { it.time ?: "99:99" })
+        val jobs = dates.flatMap { date ->
+            sport.paths.map { path ->
+                async(Dispatchers.IO) { fetchOne(sport.source, path, date) }
+            }
+        }
+        jobs.flatMap { it.await() }
+            .distinctBy { it.id }
+            .sortedWith(compareBy<Event> { it.date }.thenBy { it.time ?: "99:99" })
     }
 
-    private fun fetchDay(sport: Sport, date: LocalDate): List<Event> {
-        return when (sport.source) {
-            Source.ESPN -> fetchEspn(sport.path, date)
-            Source.SPORTS_DB -> fetchSportsDb(sport.path, date)
-        }
+    private fun fetchOne(source: Source, path: String, date: LocalDate): List<Event> = when (source) {
+        Source.ESPN -> fetchEspn(path, date)
+        Source.SPORTS_DB -> fetchSportsDb(path, date)
     }
 
     private fun fetchEspn(path: String, date: LocalDate): List<Event> {

@@ -14,7 +14,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import android.os.Bundle
-import androidx.appcompat.app.AlertDialog
+import android.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 
@@ -241,7 +241,11 @@ class SettingsActivity : ComponentActivity() {
         rowView.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
 
         if (toggleValue != null && onToggle != null) {
-            val switch = androidx.appcompat.widget.SwitchCompat(this).apply {
+            // Switch (framework), não SwitchCompat: o app roda com
+            // Theme.DeviceDefault, não Theme.AppCompat, e o widget do
+            // appcompat crashava ao resolver atributos de tema que só
+            // existem sob AppCompat.
+            val switch = android.widget.Switch(this).apply {
                 isChecked = toggleValue
                 setOnCheckedChangeListener { _, checked -> onToggle(checked) }
             }
