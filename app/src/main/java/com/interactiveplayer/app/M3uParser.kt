@@ -32,7 +32,8 @@ object M3uParser {
                     val name = attribute(header, "tvg-name") ?: header.substringAfterLast(",", "Sem título").trim()
                     val group = attribute(header, "group-title") ?: "Sem categoria"
                     val logo = attribute(header, "tvg-logo")
-                    result += M3uItem(name, group, logo, decode(line), classify(name, group))
+                    val url = decode(line)
+                    result += M3uItem(name, group, logo, url, classify(name, group), streamIdFromUrl(url))
                     info = null
                 }
             }
@@ -50,6 +51,22 @@ object M3uParser {
     }
 
     private fun decode(value: String): String = runCatching { URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)
+
+    /**
+     * Exportação M3U do Xtream normalmente segue o padrão
+     * `.../live|movie|series/usuario/senha/12345.ext` — o mesmo formato
+     * que a API JSON usa. Extrai esse ID pra viabilizar EPG e sinopse
+     * mesmo quando a lista chegou como M3U puro, não como catálogo
+     * Xtream — que é o caminho mais comum na prática.
+     */
+    private fun streamIdFromUrl(url: String): String? = runCatching {
+        val path = java.net.URI(url).path ?: return@runCatching null
+        val segments = path.trim('/').split('/')
+        if (segments.size < 4) return@runCatching null
+        if (segments[segments.size - 4] !in listOf("live", "movie", "series")) return@runCatching null
+        val id = segments.last().substringBeforeLast('.')
+        id.takeIf { it.isNotBlank() && it.all { ch -> ch.isDigit() } }
+    }.getOrNull()
 
     private fun classify(name: String, group: String): M3uItem.Kind {
         val value = "$name $group".lowercase()

@@ -63,6 +63,15 @@ object CatalogRepository {
             lastMessage = "Nenhuma playlist foi devolvida para este MAC."
             return emptyList()
         }
+        // Precisa rodar SEMPRE, não só quando o catálogo Xtream (JSON)
+        // é usado: a maioria das listas Xtream na prática chega como
+        // M3U puro (get.php?...&type=m3u_plus), que tem usuário/senha
+        // na própria URL mas nunca passava por fetchXtreamParallel — e
+        // era só ali que as credenciais eram salvas. Sem elas, EPG e
+        // sinopse nunca tinham como funcionar, mesmo com o streamId
+        // certo em mãos.
+        extractAndSaveCredentials(context, playlist.url)
+
         val direct = fetchM3u(playlist.url)
         if (direct.isNotEmpty()) {
             lastMessage = "Playlist M3U carregada."
@@ -75,6 +84,20 @@ object CatalogRepository {
         }
         lastMessage = "A playlist devolvida pelo painel não respondeu como M3U/Xtream."
         return emptyList()
+    }
+
+    private fun extractAndSaveCredentials(context: Context, playlistUrl: String) {
+        runCatching {
+            val parsed = URL(playlistUrl)
+            val params = parsed.query.orEmpty().split('&').mapNotNull { part ->
+                val pieces = part.split('=', limit = 2)
+                if (pieces.size == 2) URLDecoder.decode(pieces[0], "UTF-8") to URLDecoder.decode(pieces[1], "UTF-8") else null
+            }.toMap()
+            val username = params["username"] ?: params["user"] ?: return
+            val password = params["password"] ?: params["pass"] ?: return
+            val server = "${parsed.protocol}://${parsed.authority}"
+            XtreamCredentials.save(context, server, username, password)
+        }
     }
 
     private fun fetchM3u(rawUrl: String): List<M3uItem> = runCatching {
