@@ -25,6 +25,14 @@ object SharedChannelPlayer {
     var currentUrl: String? = null
         private set
 
+    /**
+     * Qual canal está tocando agora, atualizado por QUALQUER tela que
+     * trocar de canal (caixinha ou tela cheia). Sem isso, trocar de
+     * canal na tela cheia e depois voltar pra caixinha fazia ela voltar
+     * pro canal antigo — ela nunca ficava sabendo que algo tinha mudado.
+     */
+    var currentItem: M3uItem? = null
+
     /** Devolve o player existente se já for o mesmo canal; senão troca. */
     fun playerFor(context: Context, url: String): ExoPlayer {
         val existing = player
@@ -46,5 +54,6 @@ object SharedChannelPlayer {
         player?.release()
         player = null
         currentUrl = null
+        currentItem = null
     }
 }

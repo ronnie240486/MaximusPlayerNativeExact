@@ -403,6 +403,17 @@ class PlayerControls(
         liveBadge.visibility = View.GONE
     }
 
+    /**
+     * Deixa a PlayerActivity encaixar conteúdo extra (o bloco de
+     * logo/título/EPG do canal ao vivo) dentro do MESMO overlay que já
+     * esconde/mostra sozinho — sem isso, esse bloco ficava preso na
+     * tela o tempo todo, sem participar do toque pra esconder os
+     * controles.
+     */
+    fun attachExtra(view: View, params: FrameLayout.LayoutParams) {
+        overlay.addView(view, params)
+    }
+
     fun release() {
         hideJob?.cancel()
         progressJob?.cancel()

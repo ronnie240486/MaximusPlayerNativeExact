@@ -27,6 +27,19 @@ object EpgClient {
         val isNow: Boolean,
     )
 
+    // Cache simples em memória — evita rebuscar o mesmo canal toda vez
+    // que a linha dele volta a ficar visível ao rolar a lista.
+    private val nowTitleCache = HashMap<String, String?>()
+
+    /** Deve ser chamado fora da thread principal. "Agora tocando" de um canal, para listas grandes (com cache). */
+    fun fetchNowTitle(context: Context, item: M3uItem): String? {
+        val streamId = item.streamId ?: return null
+        if (nowTitleCache.containsKey(streamId)) return nowTitleCache[streamId]
+        val now = fetchSchedule(context, item, limit = 2).firstOrNull { it.isNow }?.title
+        nowTitleCache[streamId] = now
+        return now
+    }
+
     /** Deve ser chamado fora da thread principal. */
     fun fetchSchedule(context: Context, item: M3uItem, limit: Int = 6): List<Program> {
         val streamId = item.streamId ?: return emptyList()

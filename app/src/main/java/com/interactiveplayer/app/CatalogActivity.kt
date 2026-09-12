@@ -357,13 +357,26 @@ private class CatalogAdapter(
             rightMargin = context.dp(Theme.SPACING_SM)
         })
 
+        val texts = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            tag = "texts"
+        }
         val name = TextView(context).apply {
             textSize = 13f
             setTextColor(Theme.white)
             maxLines = 1
             tag = "name"
         }
-        row.addView(name, LinearLayout.LayoutParams(0, -2, 1f))
+        texts.addView(name)
+        val epgNow = TextView(context).apply {
+            textSize = 10f
+            setTextColor(Theme.textMuted)
+            maxLines = 1
+            tag = "epgNow"
+            visibility = View.GONE
+        }
+        texts.addView(epgNow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = context.dp(2) })
+        row.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
 
         val heart = TextView(context).apply {
             textSize = 16f
@@ -408,11 +421,22 @@ private class CatalogAdapter(
         private val number = view.findViewWithTag<TextView>("number")
         private val logo = view.findViewWithTag<ImageView>("logo")
         private val name = view.findViewWithTag<TextView>("name")
+        private val epgNow = view.findViewWithTag<TextView>("epgNow")
         private val heart = view.findViewWithTag<TextView>("heart")
 
         fun bind(item: M3uItem, position: Int, onClick: (M3uItem) -> Unit, onToggleFavorite: (M3uItem) -> Boolean) {
             number.setText((position + 1).toString())
             name.setText(item.name)
+
+            // "Agora" embaixo do nome — só busca pra quem está
+            // realmente visível na tela (o RecyclerView só chama bind()
+            // pras linhas visíveis), então não trava com milhares de
+            // canais na lista.
+            epgNow.visibility = View.GONE
+            epgNow.tag = item.streamId
+            item.streamId?.let { streamId ->
+                loadNowPlaying(epgNow, itemView.context, item, streamId)
+            }
 
             // Marca qual URL este ImageView está tentando carregar agora,
             // pra descartar o resultado se a view for reciclada antes da

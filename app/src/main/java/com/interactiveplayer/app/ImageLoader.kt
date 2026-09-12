@@ -3,6 +3,9 @@ package com.interactiveplayer.app
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.LruCache
+import android.view.View
+import android.widget.TextView
+import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -88,6 +91,26 @@ object ImageLoader {
         connection.readTimeout = 8000
         connection.inputStream.use { it.readBytes() }
     }.getOrNull()
+}
+
+/**
+ * "Agora" embaixo do nome do canal, na lista. Segue o mesmo cuidado do
+ * loadRecyclableImage: guarda o streamId pedido na tag e só aplica o
+ * resultado se a view ainda for daquele mesmo canal quando a resposta
+ * chegar — senão o "agora" de um canal errado apareceria embaixo de
+ * outro, depois de rolar a lista rápido.
+ */
+fun loadNowPlaying(view: TextView, context: android.content.Context, item: M3uItem, streamId: String) {
+    val activity = context as? ComponentActivity ?: return
+    activity.lifecycleScope.launch {
+        val title = withContext(Dispatchers.IO) {
+            EpgClient.fetchNowTitle(context, item)
+        }
+        if (view.tag == streamId && !title.isNullOrBlank()) {
+            view.setText("Agora: $title")
+            view.visibility = View.VISIBLE
+        }
+    }
 }
 
 /**

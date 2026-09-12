@@ -110,7 +110,7 @@ class PlayerActivity : ComponentActivity() {
         if (isLive) {
             controls.hideBuiltInTitle()
             controls.hideBuiltInLiveBadge()
-            root.addView(
+            controls.attachExtra(
                 buildLiveInfoBlock(),
                 FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply { bottomMargin = dp(64) }
             )
@@ -161,8 +161,9 @@ class PlayerActivity : ComponentActivity() {
         gridOverlay = FrameLayout(this).apply { visibility = View.GONE }
 
         val backdrop = View(this).apply {
-            // Tela cheia de verdade, fundo opaco — igual à referência.
-            setBackgroundColor(Color.rgb(11, 15, 26))
+            // Transparente de verdade — o vídeo continua visível (escurecido)
+            // atrás da lista, já que a pessoa ainda está "no meio" de assistir.
+            setBackgroundColor(Color.argb(210, 11, 15, 26))
             isClickable = true
             setOnClickListener { gridOverlay.visibility = View.GONE }
         }
@@ -209,6 +210,15 @@ class PlayerActivity : ComponentActivity() {
             bottomMargin = dp(Theme.SPACING_SM)
         })
 
+        // Categorias — faltavam aqui (só existiam na caixinha de detalhes).
+        val categoryRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val categoryScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            setPadding(dp(Theme.SPACING_LG), 0, dp(Theme.SPACING_LG), 0)
+            addView(categoryRow)
+        }
+        panel.addView(categoryScroll, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(Theme.SPACING_SM) })
+
         val recycler = RecyclerView(this).apply { layoutManager = LinearLayoutManager(this@PlayerActivity) }
         gridAdapter = ChannelGridAdapter { chosen -> switchToChannel(chosen) }
         recycler.adapter = gridAdapter
@@ -216,17 +226,61 @@ class PlayerActivity : ComponentActivity() {
 
         gridOverlay.addView(panel, FrameLayout.LayoutParams(-1, -1))
 
+        var selectedCategory: String? = null
+        fun applyFilter() {
+            val query = search.text?.toString()?.trim()?.lowercase().orEmpty()
+            gridAdapter.submit(
+                allChannels.filter { channel ->
+                    (selectedCategory == null || channel.group == selectedCategory) &&
+                        (query.isEmpty() || channel.name.lowercase().contains(query))
+                }
+            )
+        }
         search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                val query = s?.toString()?.trim()?.lowercase().orEmpty()
-                gridAdapter.submit(allChannels.filter { query.isEmpty() || it.name.lowercase().contains(query) })
-            }
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = applyFilter()
             override fun afterTextChanged(s: Editable?) = Unit
         })
 
+        fun addCategoryChip(label: String, group: String?) {
+            categoryRow.addView(TextView(this).apply {
+                setText(label)
+                textSize = 10f
+                setTypeface(Typeface.DEFAULT_BOLD)
+                setPadding(dp(Theme.SPACING_SM), dp(6), dp(Theme.SPACING_SM), dp(6))
+                fun refresh() {
+                    val active = selectedCategory == group
+                    setTextColor(if (active) Theme.accentCyan else Theme.textSecondary)
+                    background = roundRect(
+                        if (active) Color.argb(46, 76, 232, 240) else Color.argb(15, 255, 255, 255),
+                        Theme.RADIUS_PILL
+                    )
+                }
+                refresh()
+                isFocusable = true
+                isClickable = true
+                setOnClickListener {
+                    selectedCategory = group
+                    for (i in 0 until categoryRow.childCount) {
+                        val chip = categoryRow.getChildAt(i) as TextView
+                        val chipGroup = if (i == 0) null else chip.text.toString()
+                        val active = selectedCategory == chipGroup
+                        chip.setTextColor(if (active) Theme.accentCyan else Theme.textSecondary)
+                        chip.background = roundRect(
+                            if (active) Color.argb(46, 76, 232, 240) else Color.argb(15, 255, 255, 255),
+                            Theme.RADIUS_PILL
+                        )
+                    }
+                    applyFilter()
+                }
+                layoutParams = LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(6) }
+            })
+        }
+        addCategoryChip("Todos", null)
+
         lifecycleScope.launch {
             allChannels = CatalogRepository.load(this@PlayerActivity).filter { it.kind == M3uItem.Kind.CHANNEL }
+            allChannels.map { it.group }.distinct().sorted().forEach { addCategoryChip(it, it) }
             gridAdapter.submit(allChannels)
         }
 
@@ -240,6 +294,7 @@ class PlayerActivity : ComponentActivity() {
     /** Troca de canal sem sair da tela cheia — atualiza player, título e streamId. */
     private fun switchToChannel(chosen: M3uItem) {
         gridOverlay.visibility = View.GONE
+        SharedChannelPlayer.currentItem = chosen
         mediaUrl = chosen.url
         mediaTitle = chosen.name
         mediaLogo = chosen.logo

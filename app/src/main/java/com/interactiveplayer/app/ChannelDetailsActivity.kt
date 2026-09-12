@@ -260,6 +260,7 @@ class ChannelDetailsActivity : ComponentActivity() {
 
     private fun startPlayback() {
         if (item.url.isBlank()) return
+        SharedChannelPlayer.currentItem = item
         val shared = SharedChannelPlayer.playerFor(this, item.url)
         playerView.player = shared
     }
@@ -415,10 +416,9 @@ class ChannelDetailsActivity : ComponentActivity() {
         gridOverlay = FrameLayout(this).apply { visibility = View.GONE }
 
         val backdrop = View(this).apply {
-            // Tela cheia de verdade, fundo opaco — igual à referência
-            // original ("Canais" ocupando a tela inteira, não um
-            // painelzinho lateral com o vídeo aparecendo atrás).
-            setBackgroundColor(Color.rgb(11, 15, 26))
+            // Transparente de verdade — o vídeo continua visível
+            // (escurecido) atrás da lista.
+            setBackgroundColor(Color.argb(210, 11, 15, 26))
             isClickable = true
             setOnClickListener { closeChannelGrid() }
         }
@@ -569,6 +569,22 @@ class ChannelDetailsActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Se a pessoa trocou de canal DENTRO da tela cheia, é isso aqui
+        // que faz a caixinha descobrir — sem isso ela voltava sempre
+        // pro canal antigo, porque nunca ficava sabendo que algo tinha
+        // mudado enquanto estava em segundo plano.
+        SharedChannelPlayer.currentItem?.let { latest ->
+            if (latest.url != item.url) {
+                item = latest
+                channelNameText.setText(item.name)
+                categoryText.setText(if (item.group.isNotBlank()) "Categoria ${item.group}" else "")
+                refreshFavorite()
+                epgList.removeAllViews()
+                epgStatus.visibility = View.VISIBLE
+                epgStatus.setText("Carregando programação...")
+                loadEpg()
+            }
+        }
         WatchHistoryStore.record(this, item)
         // Reanexa a MESMA instância — se a pessoa voltou da tela cheia,
         // o canal continua tocando exatamente de onde estava, sem
