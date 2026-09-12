@@ -23,6 +23,7 @@ object WatchHistoryStore {
         val logo: String?,
         val url: String,
         val kind: M3uItem.Kind,
+        val streamId: String? = null,
     )
 
     fun list(context: Context): List<Entry> {
@@ -44,6 +45,7 @@ object WatchHistoryStore {
                             kind = runCatching {
                                 M3uItem.Kind.valueOf(item.optString("kind"))
                             }.getOrDefault(M3uItem.Kind.MOVIE),
+                            streamId = item.optStringOrNull("streamId"),
                         )
                     )
                 }
@@ -66,6 +68,7 @@ object WatchHistoryStore {
                     logo = item.logo,
                     url = item.url,
                     kind = item.kind,
+                    streamId = item.streamId,
                 )
             )
             addAll(current)
@@ -85,6 +88,7 @@ object WatchHistoryStore {
                     put("logo", entry.logo ?: "")
                     put("url", entry.url)
                     put("kind", entry.kind.name)
+                    put("streamId", entry.streamId ?: "")
                 }
             )
         }
@@ -95,5 +99,5 @@ object WatchHistoryStore {
     }
 
     /** Converte de volta para M3uItem, que é o que a Home sabe abrir. */
-    fun Entry.toItem(): M3uItem = M3uItem(name, group, logo, url, kind)
+    fun Entry.toItem(): M3uItem = M3uItem(name, group, logo, url, kind, streamId)
 }

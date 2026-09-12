@@ -398,6 +398,11 @@ class PlayerControls(
         titleText.visibility = View.GONE
     }
 
+    /** Mesma ideia do hideBuiltInTitle(): o bloco de EPG da PlayerActivity já tem seu próprio selo. */
+    fun hideBuiltInLiveBadge() {
+        liveBadge.visibility = View.GONE
+    }
+
     fun release() {
         hideJob?.cancel()
         progressJob?.cancel()

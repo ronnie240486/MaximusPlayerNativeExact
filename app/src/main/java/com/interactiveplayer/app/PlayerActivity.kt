@@ -109,6 +109,7 @@ class PlayerActivity : ComponentActivity() {
 
         if (isLive) {
             controls.hideBuiltInTitle()
+            controls.hideBuiltInLiveBadge()
             root.addView(
                 buildLiveInfoBlock(),
                 FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply { bottomMargin = dp(64) }
@@ -286,6 +287,13 @@ class PlayerActivity : ComponentActivity() {
                 showError("Não foi possível reproduzir esse conteúdo agora. Confere sua internet ou tenta de novo em instantes.")
             }
         })
+        // O listener só avisa sobre MUDANÇAS futuras de estado. Se o
+        // player já veio pronto (caso comum aqui: a caixinha de
+        // detalhes já estava tocando o canal antes de abrir a tela
+        // cheia), nenhuma mudança nunca chega e a bolinha de
+        // carregamento ficava girando pra sempre. Sincroniza direto com
+        // o estado atual, sem depender só do listener.
+        progressBar.visibility = if (exo.playbackState == Player.STATE_READY) View.GONE else View.VISIBLE
         controls.bind(exo, mediaTitle.ifBlank { "Reproduzindo" }, url = url)
     }
 
@@ -354,7 +362,14 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun loadLiveEpg() {
-        val streamId = currentStreamId ?: return
+        val streamId = currentStreamId
+        if (streamId == null) {
+            // Sem streamId não dá pra chamar o EPG — mas isso não pode
+            // ficar em branco sem explicação nenhuma pra quem está
+            // vendo a tela.
+            epgSummary.setText("Sem informações de programação para este canal.")
+            return
+        }
         val item = M3uItem(mediaTitle, "", mediaLogo, mediaUrl, M3uItem.Kind.CHANNEL, streamId)
         lifecycleScope.launch {
             val programs = withContext(Dispatchers.IO) { EpgClient.fetchSchedule(this@PlayerActivity, item) }

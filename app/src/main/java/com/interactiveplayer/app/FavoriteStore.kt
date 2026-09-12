@@ -15,6 +15,9 @@ object FavoriteStore {
         val logo: String?,
         val url: String,
         val kind: M3uItem.Kind,
+        // Sem isso, um canal favoritado e reaberto perdia o EPG (o
+        // lembrete de programação também depende dele).
+        val streamId: String? = null,
     )
 
     fun list(context: Context): List<Favorite> {
@@ -33,6 +36,7 @@ object FavoriteStore {
                         logo = item.optString("logo").ifBlank { null },
                         url = url,
                         kind = runCatching { M3uItem.Kind.valueOf(item.optString("kind")) }.getOrDefault(M3uItem.Kind.CHANNEL),
+                        streamId = item.optStringOrNull("streamId"),
                     ))
                 }
             }
@@ -49,7 +53,7 @@ object FavoriteStore {
             current.removeAt(index)
             false
         } else {
-            current.add(Favorite(id, item.name, item.group, item.logo, item.url, item.kind))
+            current.add(Favorite(id, item.name, item.group, item.logo, item.url, item.kind, item.streamId))
             true
         }
         persist(context, current)
@@ -70,6 +74,7 @@ object FavoriteStore {
                 put("logo", item.logo ?: "")
                 put("url", item.url)
                 put("kind", item.kind.name)
+                put("streamId", item.streamId ?: "")
             })
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_ITEMS, array.toString()).apply()

@@ -115,6 +115,7 @@ class FavoritesActivity : ComponentActivity() {
                     .putExtra("group", favorite.group)
                     .putExtra("logo", favorite.logo)
                     .putExtra("url", favorite.url)
+                    .putExtra("streamId", favorite.streamId)
             )
         } else {
             startActivity(

@@ -178,7 +178,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun historyAsItems(): List<M3uItem> =
-        WatchHistoryStore.list(this).map { M3uItem(it.name, it.group, it.logo, it.url, it.kind) }
+        WatchHistoryStore.list(this).map { M3uItem(it.name, it.group, it.logo, it.url, it.kind, it.streamId) }
 
     /** Substitui só a faixa "Continue assistindo" no lugar, sem tocar no resto. */
     private fun refreshContinueWatching() {
