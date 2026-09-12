@@ -286,13 +286,13 @@ class MainActivity : ComponentActivity() {
 
     private fun openNavTarget(label: String) {
         val kind = when (label) {
-            "Canais" -> "CHANNEL"
             "Filmes" -> "MOVIE"
             "Séries" -> "SERIES"
             "Kids" -> "KIDS"
             else -> null
         }
         when {
+            label == "Canais" -> startActivity(Intent(this@MainActivity, ChannelsActivity::class.java))
             kind != null ->
                 startActivity(
                     Intent(this@MainActivity, CatalogActivity::class.java).putExtra("mode", kind)
@@ -830,13 +830,7 @@ class MainActivity : ComponentActivity() {
     private fun openItem(item: M3uItem) {
         WatchHistoryStore.record(this, item)
         if (item.kind == M3uItem.Kind.CHANNEL) {
-            startActivity(Intent(this, ChannelDetailsActivity::class.java).apply {
-                putExtra("name", item.name)
-                putExtra("group", item.group)
-                putExtra("logo", item.logo)
-                putExtra("url", item.url)
-                putExtra("streamId", item.streamId)
-            })
+            startActivity(Intent(this, ChannelsActivity::class.java).putExtra("focusUrl", item.url))
         } else {
             startActivity(Intent(this, ContentDetailsActivity::class.java).apply {
                 putExtra("name", item.name)

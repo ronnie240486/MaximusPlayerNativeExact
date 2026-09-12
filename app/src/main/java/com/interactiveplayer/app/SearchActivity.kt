@@ -86,12 +86,8 @@ class SearchActivity : ComponentActivity() {
                 setOnClickListener {
                     if (item.kind == M3uItem.Kind.CHANNEL) {
                         startActivity(
-                            android.content.Intent(this@SearchActivity, ChannelDetailsActivity::class.java)
-                                .putExtra("name", item.name)
-                                .putExtra("group", item.group)
-                                .putExtra("logo", item.logo)
-                                .putExtra("url", item.url)
-                                .putExtra("streamId", item.streamId)
+                            android.content.Intent(this@SearchActivity, ChannelsActivity::class.java)
+                                .putExtra("focusUrl", item.url)
                         )
                     } else {
                         startActivity(android.content.Intent(this@SearchActivity, ContentDetailsActivity::class.java).apply { putExtra("name", item.name); putExtra("group", item.group); putExtra("logo", item.logo); putExtra("url", item.url); putExtra("kind", item.kind.name) })

@@ -106,16 +106,11 @@ class FavoritesActivity : ComponentActivity() {
 
     private fun open(favorite: FavoriteStore.Favorite) {
         if (favorite.kind == M3uItem.Kind.CHANNEL) {
-            // Canal vai pra tela de detalhes (caixinha + EPG), igual ao
-            // Catálogo e à Home — só a PlayerActivity direto pulava essa
-            // etapa, inconsistente com o resto do app.
+            // Canal abre a tela unificada de Canais, já com esse canal
+            // selecionado — a mesma tela usada pelo sidebar agora.
             startActivity(
-                android.content.Intent(this, ChannelDetailsActivity::class.java)
-                    .putExtra("name", favorite.name)
-                    .putExtra("group", favorite.group)
-                    .putExtra("logo", favorite.logo)
-                    .putExtra("url", favorite.url)
-                    .putExtra("streamId", favorite.streamId)
+                android.content.Intent(this, ChannelsActivity::class.java)
+                    .putExtra("focusUrl", favorite.url)
             )
         } else {
             startActivity(
