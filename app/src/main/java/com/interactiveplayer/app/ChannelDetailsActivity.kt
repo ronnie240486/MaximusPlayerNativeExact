@@ -276,6 +276,7 @@ class ChannelDetailsActivity : ComponentActivity() {
             Intent(this, PlayerActivity::class.java)
                 .putExtra("url", item.url)
                 .putExtra("title", item.name)
+                .putExtra("logo", item.logo)
                 .putExtra("isLive", true)
                 .putExtra("streamId", item.streamId)
         )

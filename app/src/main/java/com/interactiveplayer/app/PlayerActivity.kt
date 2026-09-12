@@ -18,6 +18,7 @@ import android.view.WindowInsetsController
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -30,7 +31,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Tela de reprodução em tela cheia — filmes, séries, rádio (chega
@@ -55,9 +58,14 @@ class PlayerActivity : ComponentActivity() {
     // série e rádio continuam com o ExoPlayer próprio desta tela.
     private var isLive: Boolean = false
     private var currentStreamId: String? = null
+    private var mediaLogo: String? = null
     private var allChannels: List<M3uItem> = emptyList()
     private lateinit var gridOverlay: FrameLayout
     private lateinit var gridAdapter: ChannelGridAdapter
+    private lateinit var epgSummary: TextView
+    private lateinit var epgStrip: LinearLayout
+    private lateinit var liveTitleText: TextView
+    private lateinit var liveLogoView: ImageView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,6 +74,7 @@ class PlayerActivity : ComponentActivity() {
         mediaTitle = intent.getStringExtra("title").orEmpty()
         isLive = intent.getBooleanExtra("isLive", false)
         currentStreamId = intent.getStringExtra("streamId")
+        mediaLogo = intent.getStringExtra("logo")
 
         setContentView(buildLayout())
         // window.insetsController só existe depois que o DecorView é
@@ -79,6 +88,7 @@ class PlayerActivity : ComponentActivity() {
             return
         }
         startPlayback(mediaUrl)
+        if (isLive) loadLiveEpg()
     }
 
     private fun buildLayout(): View {
@@ -96,6 +106,14 @@ class PlayerActivity : ComponentActivity() {
             onChannelGridRequested = if (isLive) { { openChannelGrid() } } else null,
         )
         root.addView(controls.build(), FrameLayout.LayoutParams(-1, -1))
+
+        if (isLive) {
+            controls.hideBuiltInTitle()
+            root.addView(
+                buildLiveInfoBlock(),
+                FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply { bottomMargin = dp(64) }
+            )
+        }
 
         progressBar = ProgressBar(this).apply {
             indeterminateTintList = android.content.res.ColorStateList.valueOf(Theme.accentCyan)
@@ -224,9 +242,19 @@ class PlayerActivity : ComponentActivity() {
         gridOverlay.visibility = View.GONE
         mediaUrl = chosen.url
         mediaTitle = chosen.name
+        mediaLogo = chosen.logo
         currentStreamId = chosen.streamId
+        liveTitleText.setText(mediaTitle)
+        liveLogoView.setImageBitmap(null)
+        mediaLogo?.takeIf { it.isNotBlank() }?.let { url ->
+            lifecycleScope.launch {
+                val bitmap = ImageLoader.load(url, dp(64), dp(64))
+                if (bitmap != null) liveLogoView.setImageBitmap(bitmap)
+            }
+        }
         WatchHistoryStore.record(this, chosen)
         startPlayback(mediaUrl)
+        loadLiveEpg()
     }
 
     private fun startPlayback(url: String) {
@@ -261,6 +289,155 @@ class PlayerActivity : ComponentActivity() {
         })
         controls.bind(exo, mediaTitle.ifBlank { "Reproduzindo" }, url = url)
     }
+
+    // -----------------------------------------------------------------
+    // Bloco de EPG na tela cheia — logo, título, AO VIVO, Agora/A seguir
+    // e a faixa de programação, igual à referência.
+    // -----------------------------------------------------------------
+
+    private fun buildLiveInfoBlock(): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(Theme.SPACING_MD), 0, dp(Theme.SPACING_MD), 0)
+        }
+
+        val logo = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            background = roundRect(Theme.white, Theme.RADIUS_SM)
+        }
+        liveLogoView = logo
+        row.addView(logo, LinearLayout.LayoutParams(dp(64), dp(64)).apply { rightMargin = dp(Theme.SPACING_SM) })
+        mediaLogo?.takeIf { it.isNotBlank() }?.let { url ->
+            lifecycleScope.launch {
+                val bitmap = ImageLoader.load(url, dp(64), dp(64))
+                if (bitmap != null) logo.setImageBitmap(bitmap)
+            }
+        }
+
+        val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        liveTitleText = TextView(this).apply {
+            setText(mediaTitle)
+            textSize = 18f
+            setTextColor(Theme.white)
+            setTypeface(Typeface.DEFAULT_BOLD)
+        }
+        texts.addView(liveTitleText)
+        texts.addView(TextView(this).apply {
+            setText("● AO VIVO")
+            textSize = 11f
+            setTypeface(Typeface.DEFAULT_BOLD)
+            setTextColor(Theme.black)
+            gravity = Gravity.CENTER
+            background = roundRect(Theme.accentCyan, 4)
+            setPadding(dp(8), dp(2), dp(8), dp(2))
+        }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(4) })
+        epgSummary = TextView(this).apply {
+            textSize = 12f
+            setTextColor(Theme.textSecondary)
+            setLineSpacing(dpF(3f), 1f)
+            maxLines = 2
+        }
+        texts.addView(epgSummary, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+        row.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
+
+        val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        column.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(Theme.SPACING_SM) })
+
+        val stripScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            setPadding(dp(Theme.SPACING_MD), 0, dp(Theme.SPACING_MD), 0)
+        }
+        epgStrip = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        stripScroll.addView(epgStrip)
+        column.addView(stripScroll, LinearLayout.LayoutParams(-1, -2))
+
+        return column
+    }
+
+    private fun loadLiveEpg() {
+        val streamId = currentStreamId ?: return
+        val item = M3uItem(mediaTitle, "", mediaLogo, mediaUrl, M3uItem.Kind.CHANNEL, streamId)
+        lifecycleScope.launch {
+            val programs = withContext(Dispatchers.IO) { EpgClient.fetchSchedule(this@PlayerActivity, item) }
+            epgStrip.removeAllViews()
+            if (programs.isEmpty()) {
+                epgSummary.setText("Sem informações de programação para este canal.")
+                return@launch
+            }
+            val nowIndex = programs.indexOfFirst { it.isNow }
+            val now = programs.getOrNull(nowIndex)
+            val next = programs.getOrNull(nowIndex + 1) ?: programs.firstOrNull { !it.isNow }
+            epgSummary.setText(
+                buildList {
+                    now?.let { add("Agora: ${it.title} (${it.startLabel}–${it.endLabel})") }
+                    next?.let { add("A seguir: ${it.title} (${it.startLabel})") }
+                }.joinToString("\n")
+            )
+            programs.forEachIndexed { index, program ->
+                epgStrip.addView(buildEpgCard(program, index == nowIndex, streamId))
+            }
+        }
+    }
+
+    private fun buildEpgCard(program: EpgClient.Program, isNow: Boolean, streamId: String): View {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundRect(Color.argb(140, 22, 27, 46), Theme.RADIUS_SM)
+            setPadding(dp(Theme.SPACING_SM), dp(6), dp(Theme.SPACING_SM), dp(6))
+            layoutParams = LinearLayout.LayoutParams(dp(140), -2).apply { rightMargin = dp(Theme.SPACING_SM) }
+        }
+        val topRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        topRow.addView(TextView(this).apply {
+            setText(if (isNow) "AGORA" else "A SEGUIR")
+            textSize = 9f
+            setTypeface(Typeface.DEFAULT_BOLD)
+            setTextColor(if (isNow) Theme.star else Theme.textMuted)
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        if (!isNow) {
+            val reminderId = "$streamId-${program.startLabel}-${program.title}"
+            val bell = TextView(this).apply { textSize = 13f; isFocusable = true; isClickable = true }
+            fun refresh() {
+                val scheduled = ProgramReminderStore.isScheduled(this@PlayerActivity, reminderId)
+                bell.setText(if (scheduled) "🔔" else "🔕")
+            }
+            refresh()
+            bell.setOnClickListener {
+                ProgramReminderStore.toggle(
+                    this,
+                    ProgramReminderStore.Reminder(
+                        reminderId, program.title, streamId, mediaTitle, mediaLogo,
+                        startsAtMsFromLabel(program.startLabel)
+                    )
+                )
+                refresh()
+            }
+            topRow.addView(bell)
+        }
+        card.addView(topRow)
+        card.addView(TextView(this).apply {
+            setText(program.title)
+            textSize = 12f
+            setTextColor(Theme.white)
+            maxLines = 2
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(3) })
+        card.addView(TextView(this).apply {
+            setText("${program.startLabel} - ${program.endLabel}")
+            textSize = 10f
+            setTextColor(Theme.textMuted)
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2) })
+        return card
+    }
+
+    private fun startsAtMsFromLabel(label: String): Long = runCatching {
+        val parts = label.split(":")
+        val calendar = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, parts[0].toInt())
+            set(java.util.Calendar.MINUTE, parts[1].toInt())
+            set(java.util.Calendar.SECOND, 0)
+        }
+        if (calendar.timeInMillis < System.currentTimeMillis()) calendar.add(java.util.Calendar.DAY_OF_MONTH, 1)
+        calendar.timeInMillis
+    }.getOrDefault(System.currentTimeMillis())
 
     private fun showError(message: String) {
         progressBar.visibility = View.GONE

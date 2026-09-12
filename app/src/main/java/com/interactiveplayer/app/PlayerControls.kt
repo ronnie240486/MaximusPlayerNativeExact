@@ -393,6 +393,11 @@ class PlayerControls(
         return "%02d:%02d".format(minutes, seconds)
     }
 
+    /** Usado pela PlayerActivity em canal ao vivo: o bloco de EPG dela já mostra título/logo/AO VIVO, então o título simples daqui fica de fora. */
+    fun hideBuiltInTitle() {
+        titleText.visibility = View.GONE
+    }
+
     fun release() {
         hideJob?.cancel()
         progressJob?.cancel()
