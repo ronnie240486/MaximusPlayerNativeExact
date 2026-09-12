@@ -169,9 +169,15 @@ class ChannelsActivity : ComponentActivity() {
             isPreviewed = { item -> previewItem?.url == item.url },
             onFocusOrSelect = { item -> setPreview(item) },
             onActivate = { item ->
-                // Segundo OK/clique em cima do canal que já está em
-                // preview: agora sim abre o player em tela cheia.
-                if (previewItem?.url == item.url) openFullscreen(item) else setPreview(item)
+                // OK/clique no canal SÓ troca o que está tocando no
+                // preview — nunca pula pra tela cheia sozinho. Com
+                // D-pad, mover o foco já marca o canal como "em
+                // preview" antes mesmo do OK chegar (o foco sempre vem
+                // primeiro), então um "segundo clique" nunca existia de
+                // verdade: já abria a tela cheia direto no primeiro OK,
+                // sem deixar continuar navegando a lista. Tela cheia
+                // agora só pelo vídeo/ícone de expandir.
+                setPreview(item)
             },
             onToggleFavorite = { item -> FavoriteStore.toggle(this, item) },
             isFavorite = { item -> FavoriteStore.contains(this, item) },
