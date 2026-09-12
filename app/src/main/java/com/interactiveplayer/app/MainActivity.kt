@@ -840,6 +840,7 @@ class MainActivity : ComponentActivity() {
                 putExtra("group", item.group)
                 putExtra("logo", item.logo)
                 putExtra("url", item.url)
+                putExtra("streamId", item.streamId)
             })
         } else {
             startActivity(Intent(this, ContentDetailsActivity::class.java).apply {

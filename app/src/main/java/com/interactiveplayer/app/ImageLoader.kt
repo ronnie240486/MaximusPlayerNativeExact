@@ -3,7 +3,9 @@ package com.interactiveplayer.app
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.LruCache
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -86,4 +88,21 @@ object ImageLoader {
         connection.readTimeout = 8000
         connection.inputStream.use { it.readBytes() }
     }.getOrNull()
+}
+
+/**
+ * Carrega uma imagem numa ImageView dentro de uma célula reciclável
+ * (RecyclerView). Guarda a URL pedida na `tag`; quando o bitmap chega,
+ * só aplica se a `tag` ainda for a mesma — senão a view já foi
+ * reaproveitada por outro item da lista e a imagem errada apareceria.
+ */
+fun loadRecyclableImage(view: android.widget.ImageView, url: String) {
+    val activity = view.context as? androidx.activity.ComponentActivity ?: return
+    val requestedFor = url
+    activity.lifecycleScope.launch {
+        val width = view.layoutParams?.width?.takeIf { it > 0 } ?: view.context.dp(160)
+        val height = view.layoutParams?.height?.takeIf { it > 0 } ?: view.context.dp(230)
+        val bitmap = ImageLoader.load(requestedFor, width, height)
+        if (bitmap != null && view.tag == requestedFor) view.setImageBitmap(bitmap)
+    }
 }

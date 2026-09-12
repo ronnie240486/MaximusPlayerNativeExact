@@ -266,6 +266,7 @@ class CatalogActivity : ComponentActivity() {
                 putExtra("group", item.group)
                 putExtra("logo", item.logo)
                 putExtra("url", item.url)
+                putExtra("streamId", item.streamId)
             })
         } else {
             startActivity(Intent(this, ContentDetailsActivity::class.java).apply {
@@ -419,7 +420,7 @@ private class CatalogAdapter(
             logo.setImageBitmap(null)
             logo.tag = item.logo
             item.logo?.takeIf { it.isNotBlank() }?.let { url ->
-                loadInto(logo, url)
+                loadRecyclableImage(logo, url)
             }
 
             fun refreshHeart(active: Boolean) {
@@ -440,25 +441,10 @@ private class CatalogAdapter(
             name.setText(item.name)
             poster.setImageBitmap(null)
             poster.tag = item.logo
-            item.logo?.takeIf { it.isNotBlank() }?.let { url -> loadInto(poster, url) }
+            item.logo?.takeIf { it.isNotBlank() }?.let { url -> loadRecyclableImage(poster, url) }
             itemView.setOnClickListener { onClick(item) }
         }
     }
 }
 
-/**
- * Carrega uma imagem numa ImageView dentro de um ViewHolder reciclável.
- * Guarda a URL pedida na `tag`; quando o bitmap chega, só aplica se a
- * `tag` ainda for a mesma — senão a view já foi reaproveitada por outro
- * item da lista e a imagem errada apareceria nela.
- */
-private fun loadInto(view: ImageView, url: String) {
-    val activity = view.context as? ComponentActivity ?: return
-    val requestedFor = url
-    activity.lifecycleScope.launch {
-        val width = view.layoutParams?.width?.takeIf { it > 0 } ?: view.context.dp(160)
-        val height = view.layoutParams?.height?.takeIf { it > 0 } ?: view.context.dp(230)
-        val bitmap = ImageLoader.load(requestedFor, width, height)
-        if (bitmap != null && view.tag == requestedFor) view.setImageBitmap(bitmap)
-    }
-}
+
