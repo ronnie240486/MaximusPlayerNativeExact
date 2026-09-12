@@ -166,17 +166,10 @@ class ChannelsActivity : ComponentActivity() {
             clipToPadding = false
         }
         channelAdapter = ChannelListAdapter(
-            isPreviewed = { item -> previewItem?.url == item.url },
-            onFocusOrSelect = { item -> setPreview(item) },
             onActivate = { item ->
-                // OK/clique no canal SÓ troca o que está tocando no
-                // preview — nunca pula pra tela cheia sozinho. Com
-                // D-pad, mover o foco já marca o canal como "em
-                // preview" antes mesmo do OK chegar (o foco sempre vem
-                // primeiro), então um "segundo clique" nunca existia de
-                // verdade: já abria a tela cheia direto no primeiro OK,
-                // sem deixar continuar navegando a lista. Tela cheia
-                // agora só pelo vídeo/ícone de expandir.
+                // Só o clique/OK troca o canal (nunca a navegação por
+                // D-pad sozinha, e nunca pula pra tela cheia — isso é
+                // só pelo vídeo/ícone de expandir).
                 setPreview(item)
             },
             onToggleFavorite = { item -> FavoriteStore.toggle(this, item) },
@@ -219,7 +212,7 @@ class ChannelsActivity : ComponentActivity() {
                 rightMargin = dp(Theme.SPACING_SM)
             }
         )
-        column.addView(videoBox, LinearLayout.LayoutParams(-1, 0, 0.55f))
+        column.addView(videoBox, LinearLayout.LayoutParams(-1, 0, 1.4f))
 
         val infoRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -245,7 +238,7 @@ class ChannelsActivity : ComponentActivity() {
                     val nowFavorite = FavoriteStore.toggle(this@ChannelsActivity, item)
                     setText(if (nowFavorite) "♥" else "♡")
                     setTextColor(if (nowFavorite) Theme.accentMagenta else Theme.textSecondary)
-                    channelAdapter.notifyDataSetChanged()
+                    channelAdapter.refreshFavoriteFor(item.url)
                 }
             }
         }
@@ -265,7 +258,7 @@ class ChannelsActivity : ComponentActivity() {
         val epgScroll = ScrollView(this)
         epgList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         epgScroll.addView(epgList)
-        column.addView(epgScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        column.addView(epgScroll, LinearLayout.LayoutParams(-1, 0, 0.8f))
 
         return column
     }
@@ -359,7 +352,10 @@ class ChannelsActivity : ComponentActivity() {
         previewItem = item
         if (!changed) return
 
-        channelAdapter.notifyDataSetChanged()
+        // Só atualiza as linhas afetadas — notifyDataSetChanged()
+        // reconstrói a lista inteira e derruba o foco do D-pad de
+        // volta pra algum lugar aleatório (categorias, geralmente).
+        channelAdapter.setPreviewedUrl(item.url)
         previewName.setText(item.name)
         val favorite = FavoriteStore.contains(this, item)
         previewFavorite.setText(if (favorite) "♥" else "♡")
@@ -445,18 +441,42 @@ class ChannelsActivity : ComponentActivity() {
 
 /** Linha da lista central: número, logo, nome e coração. */
 private class ChannelListAdapter(
-    private val isPreviewed: (M3uItem) -> Boolean,
-    private val onFocusOrSelect: (M3uItem) -> Unit,
     private val onActivate: (M3uItem) -> Unit,
     private val onToggleFavorite: (M3uItem) -> Boolean,
     private val isFavorite: (M3uItem) -> Boolean,
 ) : RecyclerView.Adapter<ChannelListAdapter.Holder>() {
 
     private var items: List<M3uItem> = emptyList()
+    private var previewedUrl: String? = null
 
     fun submit(newItems: List<M3uItem>) {
         items = newItems
         notifyDataSetChanged()
+    }
+
+    /**
+     * Só atualiza as DUAS linhas realmente afetadas (a que perdeu o
+     * destaque e a que ganhou), em vez de notifyDataSetChanged() na
+     * lista inteira — que reconstrói todas as views visíveis e por
+     * isso derruba o foco do D-pad de volta pra algum lugar aleatório
+     * (era isso que fazia "voltar pras categorias" sozinho ao clicar).
+     */
+    fun setPreviewedUrl(url: String?) {
+        val oldUrl = previewedUrl
+        previewedUrl = url
+        if (oldUrl != null) {
+            val oldIndex = items.indexOfFirst { it.url == oldUrl }
+            if (oldIndex >= 0) notifyItemChanged(oldIndex)
+        }
+        if (url != null) {
+            val newIndex = items.indexOfFirst { it.url == url }
+            if (newIndex >= 0) notifyItemChanged(newIndex)
+        }
+    }
+
+    fun refreshFavoriteFor(url: String) {
+        val index = items.indexOfFirst { it.url == url }
+        if (index >= 0) notifyItemChanged(index)
     }
 
     override fun getItemCount(): Int = items.size
@@ -510,7 +530,7 @@ private class ChannelListAdapter(
         val item = items[position]
         holder.number.setText((position + 1).toString())
         holder.name.setText(item.name)
-        holder.row.setBackgroundColor(if (isPreviewed(item)) Color.argb(40, 76, 232, 240) else Color.TRANSPARENT)
+        holder.row.setBackgroundColor(if (item.url == previewedUrl) Color.argb(40, 76, 232, 240) else Color.TRANSPARENT)
 
         holder.logo.setImageBitmap(null)
         holder.logo.tag = item.logo
@@ -527,8 +547,9 @@ private class ChannelListAdapter(
             refreshHeart()
         }
 
+        // Só o clique/OK troca o canal — navegar com o D-pad (mudar de
+        // foco) não mexe mais no preview sozinho, como estava antes.
         holder.row.setOnClickListener { onActivate(item) }
-        holder.row.setOnFocusChangeListener { _, focused -> if (focused) onFocusOrSelect(item) }
     }
 
     class Holder(val row: LinearLayout) : RecyclerView.ViewHolder(row) {
