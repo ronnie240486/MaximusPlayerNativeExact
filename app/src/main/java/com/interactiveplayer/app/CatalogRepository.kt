@@ -34,19 +34,28 @@ object CatalogRepository {
      */
     suspend fun load(context: Context, force: Boolean = false): List<M3uItem> {
         if (!force && cached.isNotEmpty()) return cached
-        if (!force) {
-            val fromDisk = readDiskCache(context)
-            if (fromDisk.isNotEmpty()) {
-                cached = fromDisk
-                return fromDisk
+        // TUDO isso precisa rodar fora da thread principal — antes só
+        // fetch() estava protegido, mas ler/escrever o cache em disco
+        // (que processa milhares de itens em JSON) ficava direto na
+        // main thread. Num celular rápido isso passa despercebido
+        // (poucos milissegundos); num TV box fraco, esse mesmo trabalho
+        // trava a tela de verdade — era essa a diferença de
+        // desempenho entre os dois aparelhos.
+        return withContext(Dispatchers.IO) {
+            if (!force) {
+                val fromDisk = readDiskCache(context)
+                if (fromDisk.isNotEmpty()) {
+                    cached = fromDisk
+                    return@withContext fromDisk
+                }
             }
+            val result = fetch(context)
+            if (result.isNotEmpty()) {
+                cached = result
+                writeDiskCache(context, result)
+            }
+            result
         }
-        val result = withContext(Dispatchers.IO) { fetch(context) }
-        if (result.isNotEmpty()) {
-            cached = result
-            writeDiskCache(context, result)
-        }
-        return result
     }
 
     fun current(): List<M3uItem> = cached

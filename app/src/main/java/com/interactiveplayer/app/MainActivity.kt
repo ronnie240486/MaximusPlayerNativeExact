@@ -891,6 +891,7 @@ class MainActivity : ComponentActivity() {
                 putExtra("logo", item.logo)
                 putExtra("url", item.url)
                 putExtra("kind", item.kind.name)
+                putExtra("streamId", item.streamId)
             })
         }
     }

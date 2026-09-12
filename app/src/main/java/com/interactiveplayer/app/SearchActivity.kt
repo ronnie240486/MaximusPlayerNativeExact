@@ -91,7 +91,7 @@ class SearchActivity : ComponentActivity() {
                                 .putExtra("focusUrl", item.url)
                         )
                     } else {
-                        startActivity(android.content.Intent(this@SearchActivity, ContentDetailsActivity::class.java).apply { putExtra("name", item.name); putExtra("group", item.group); putExtra("logo", item.logo); putExtra("url", item.url); putExtra("kind", item.kind.name) })
+                        startActivity(android.content.Intent(this@SearchActivity, ContentDetailsActivity::class.java).apply { putExtra("name", item.name); putExtra("group", item.group); putExtra("logo", item.logo); putExtra("url", item.url); putExtra("kind", item.kind.name); putExtra("streamId", item.streamId) })
                     }
                 }
             }

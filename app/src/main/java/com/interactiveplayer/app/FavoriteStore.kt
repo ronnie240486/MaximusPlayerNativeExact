@@ -8,6 +8,12 @@ object FavoriteStore {
     private const val PREFS = "maximus_native_favorites"
     private const val KEY_ITEMS = "items"
 
+    // A lista de favoritos costuma ser pequena, mas contains() é
+    // chamado uma vez por linha ao montar a lista de canais — sem
+    // cache, isso reabria e reparseava o JSON toda vez, sempre na
+    // thread principal (que é onde o RecyclerView desenha as linhas).
+    @Volatile private var cache: List<Favorite>? = null
+
     data class Favorite(
         val id: String,
         val name: String,
@@ -21,8 +27,9 @@ object FavoriteStore {
     )
 
     fun list(context: Context): List<Favorite> {
+        cache?.let { return it }
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_ITEMS, "[]") ?: "[]"
-        return runCatching {
+        val loaded = runCatching {
             val array = JSONArray(raw)
             buildList {
                 for (index in 0 until array.length()) {
@@ -41,6 +48,8 @@ object FavoriteStore {
                 }
             }
         }.getOrDefault(emptyList())
+        cache = loaded
+        return loaded
     }
 
     fun contains(context: Context, item: M3uItem): Boolean = list(context).any { it.id == stableId(item.url) }
@@ -78,6 +87,7 @@ object FavoriteStore {
             })
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_ITEMS, array.toString()).apply()
+        cache = items
     }
 
     private fun stableId(url: String): String = url.trim().lowercase().hashCode().toString()

@@ -4,7 +4,9 @@ import android.graphics.BitmapFactory
 import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
+import android.view.View
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -23,8 +25,10 @@ import java.net.URL
  * via XtreamInfoClient — o mesmo cliente que alimenta o hero da Home —
  * em vez do texto fixo "está disponível na categoria X" de antes.
  *
- * Não replica a lista de temporadas/episódios de `series-details.tsx`:
- * cada série do catálogo aqui é um único stream, sem quebra por episódio.
+ * Série agora mostra temporada e lista de episódios de verdade (via
+ * XtreamEpisodesClient) — antes tratava a série como um único stream,
+ * e "ASSISTIR" tocava a URL da série em si, que não funciona na
+ * maioria dos painéis Xtream (cada EPISÓDIO tem seu próprio stream_id).
  */
 class ContentDetailsActivity : ComponentActivity() {
 
@@ -37,6 +41,15 @@ class ContentDetailsActivity : ComponentActivity() {
     private lateinit var metaRow: LinearLayout
     private lateinit var backdrop: ImageView
 
+    // Só usado quando item.kind == SERIES.
+    private var seasons: List<XtreamEpisodesClient.Season> = emptyList()
+    private var selectedSeasonKey: String? = null
+    private lateinit var seasonSection: LinearLayout
+    private lateinit var seasonRow: LinearLayout
+    private lateinit var episodeList: LinearLayout
+    private lateinit var episodeStatus: TextView
+    private lateinit var watchButton: TextView
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         item = M3uItem(
@@ -47,6 +60,7 @@ class ContentDetailsActivity : ComponentActivity() {
             kind = runCatching {
                 M3uItem.Kind.valueOf(intent.getStringExtra("kind") ?: "MOVIE")
             }.getOrDefault(M3uItem.Kind.MOVIE),
+            streamId = intent.getStringExtra("streamId"),
         )
         setContentView(buildView())
         loadExtraInfo()
@@ -146,7 +160,7 @@ class ContentDetailsActivity : ComponentActivity() {
             isClickable = true
             wireFocusHighlight()
             setOnClickListener { openPlayer() }
-        }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(Theme.SPACING_MD) })
+        }.also { watchButton = it }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(Theme.SPACING_MD) })
 
         hero.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(hero)
@@ -176,8 +190,135 @@ class ContentDetailsActivity : ComponentActivity() {
         }
         root.addView(plotText, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
 
+        seasonSection = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+        val seasonScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        seasonRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        seasonScroll.addView(seasonRow)
+        seasonSection.addView(seasonScroll, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(Theme.SPACING_MD)
+            bottomMargin = dp(Theme.SPACING_SM)
+        })
+        episodeStatus = TextView(this).apply {
+            setText("Carregando episódios...")
+            textSize = 12f
+            setTextColor(Theme.textMuted)
+        }
+        seasonSection.addView(episodeStatus)
+        episodeList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        seasonSection.addView(episodeList, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        root.addView(seasonSection, LinearLayout.LayoutParams(-1, -2))
+
+        if (item.kind == M3uItem.Kind.SERIES) {
+            seasonSection.visibility = View.VISIBLE
+            loadEpisodes()
+        }
+
         item.logo?.takeIf { it.isNotBlank() }?.let { loadImage(it, backdrop) }
         return ScrollView(this).apply { addView(root) }
+    }
+
+    private fun loadEpisodes() {
+        lifecycleScope.launch {
+            val loaded = withContext(Dispatchers.IO) { XtreamEpisodesClient.fetch(this@ContentDetailsActivity, item) }
+            seasons = loaded
+            if (loaded.isEmpty()) {
+                episodeStatus.setText("Não encontramos episódios pra esta série no seu painel.")
+                return@launch
+            }
+            episodeStatus.visibility = View.GONE
+            selectedSeasonKey = loaded.first().key
+            loaded.forEach { season -> seasonRow.addView(buildSeasonChip(season)) }
+            renderEpisodes()
+        }
+    }
+
+    private fun buildSeasonChip(season: XtreamEpisodesClient.Season): View =
+        TextView(this).apply {
+            setText("Temporada ${season.key}")
+            textSize = 12f
+            setTypeface(Typeface.DEFAULT_BOLD)
+            gravity = Gravity.CENTER
+            setPadding(dp(Theme.SPACING_SM), dp(8), dp(Theme.SPACING_SM), dp(8))
+            isFocusable = true
+            isClickable = true
+            wireFocusHighlight(Theme.RADIUS_PILL)
+            refreshSeasonChipColors(this, season.key)
+            setOnClickListener {
+                selectedSeasonKey = season.key
+                for (i in 0 until seasonRow.childCount) {
+                    val chip = seasonRow.getChildAt(i) as TextView
+                    refreshSeasonChipColors(chip, seasons[i].key)
+                }
+                renderEpisodes()
+            }
+            layoutParams = LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(6) }
+        }
+
+    private fun refreshSeasonChipColors(chip: TextView, key: String) {
+        val active = key == selectedSeasonKey
+        chip.setTextColor(if (active) Theme.black else Theme.white)
+        chip.background = roundRect(if (active) Theme.accentCyan else Theme.darkSurfaceAlt, Theme.RADIUS_PILL)
+    }
+
+    private fun renderEpisodes() {
+        episodeList.removeAllViews()
+        val episodes = seasons.firstOrNull { it.key == selectedSeasonKey }?.episodes.orEmpty()
+        if (episodes.isEmpty()) {
+            episodeList.addView(TextView(this).apply {
+                setText("Nenhum episódio nesta temporada.")
+                textSize = 12f
+                setTextColor(Theme.textMuted)
+            })
+            return
+        }
+        episodes.forEach { episode -> episodeList.addView(buildEpisodeRow(episode)) }
+    }
+
+    private fun buildEpisodeRow(episode: XtreamEpisodesClient.Episode): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundRect(Theme.darkSurface, Theme.RADIUS_SM)
+            setPadding(dp(Theme.SPACING_SM), dp(Theme.SPACING_SM), dp(Theme.SPACING_SM), dp(Theme.SPACING_SM))
+            isFocusable = true
+            isClickable = true
+            wireFocusHighlight()
+            setOnClickListener { openEpisode(episode) }
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) }
+        }
+        row.addView(TextView(this).apply {
+            setText("${episode.episodeNumber}. ${episode.title}")
+            textSize = 14f
+            setTextColor(Theme.white)
+            setTypeface(Typeface.DEFAULT_BOLD)
+            maxLines = 2
+        })
+        episode.plot?.takeIf { it.isNotBlank() }?.let { plot ->
+            row.addView(TextView(this).apply {
+                setText(plot)
+                textSize = 12f
+                setTextColor(Theme.textSecondary)
+                maxLines = 3
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+        }
+        return row
+    }
+
+    private fun openEpisode(episode: XtreamEpisodesClient.Episode) {
+        val credentials = XtreamCredentials.load(this)
+        val url = if (credentials != null) {
+            XtreamEpisodesClient.episodeUrl(credentials, episode)
+        } else {
+            item.url
+        }
+        WatchHistoryStore.record(this, item)
+        startActivity(
+            android.content.Intent(this, PlayerActivity::class.java)
+                .putExtra("url", url)
+                .putExtra("title", "${item.name} — ${episode.title}")
+        )
     }
 
     private fun loadExtraInfo() {
@@ -230,6 +371,17 @@ class ContentDetailsActivity : ComponentActivity() {
 
     private fun openPlayer() {
         WatchHistoryStore.record(this, item)
+        // Pra série, a URL da série em si geralmente não funciona nos
+        // painéis Xtream — cada EPISÓDIO tem seu próprio stream. ASSISTIR
+        // aqui toca o primeiro episódio disponível; se ainda não
+        // carregou nenhum, cai de volta na URL antiga mesmo.
+        if (item.kind == M3uItem.Kind.SERIES) {
+            val firstEpisode = seasons.firstOrNull()?.episodes?.firstOrNull()
+            if (firstEpisode != null) {
+                openEpisode(firstEpisode)
+                return
+            }
+        }
         startActivity(
             android.content.Intent(this, PlayerActivity::class.java)
                 .putExtra("url", item.url)

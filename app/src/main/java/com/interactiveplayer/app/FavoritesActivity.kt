@@ -115,10 +115,17 @@ class FavoritesActivity : ComponentActivity() {
                     .putExtra("focusUrl", favorite.url)
             )
         } else {
+            // Filme/série vai pra tela de detalhes — não direto pro
+            // player, que pulava a sinopse e (pra série) a lista de
+            // temporadas/episódios.
             startActivity(
-                android.content.Intent(this, PlayerActivity::class.java)
+                android.content.Intent(this, ContentDetailsActivity::class.java)
+                    .putExtra("name", favorite.name)
+                    .putExtra("group", favorite.group)
+                    .putExtra("logo", favorite.logo)
                     .putExtra("url", favorite.url)
-                    .putExtra("title", favorite.name)
+                    .putExtra("kind", favorite.kind.name)
+                    .putExtra("streamId", favorite.streamId)
             )
         }
     }
