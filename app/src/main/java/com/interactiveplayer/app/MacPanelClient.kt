@@ -132,5 +132,5 @@ object MacPanelClient {
     }
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
-    private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 12) ExoPlayerLib/2.19.1"
+    private const val USER_AGENT = "VLC/3.5.5 (Linux;Android 12) LibVLC/3.5.5"
 }

@@ -212,7 +212,7 @@ object CatalogRepository {
         // engasgava, mesmo com canais e séries carregando bem.
         repeat(2) { attempt ->
             val body = runCatching {
-                val connection = open(endpoint, 45000)
+                val connection = open(endpoint, 20000)
                 val code = connection.responseCode
                 val text = (if (code in 200..299) connection.inputStream else connection.errorStream)
                     ?.bufferedReader()?.use { it.readText() }.orEmpty()
@@ -232,7 +232,7 @@ object CatalogRepository {
         readTimeout = timeout
         requestMethod = "GET"
         instanceFollowRedirects = true
-        setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) ExoPlayerLib/2.19.1")
+        setRequestProperty("User-Agent", "VLC/3.5.5 (Linux;Android 12) LibVLC/3.5.5")
         setRequestProperty("Connection", "close")
     }
 

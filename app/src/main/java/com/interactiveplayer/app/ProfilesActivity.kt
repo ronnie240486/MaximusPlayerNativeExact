@@ -96,6 +96,7 @@ class ProfilesActivity : ComponentActivity() {
                 setPadding(dp(32), dp(12), dp(32), dp(12))
                 isFocusable = true
                 isClickable = true
+                wireFocusHighlight(24)
                 setOnClickListener {
                     startActivity(
                         Intent(this@ProfilesActivity, ProfileEditActivity::class.java)
