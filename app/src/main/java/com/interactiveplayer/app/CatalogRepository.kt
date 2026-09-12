@@ -15,7 +15,12 @@ import java.net.URLEncoder
 
 object CatalogRepository {
     private const val PREFS_NAME = "catalog_cache"
-    private const val CACHE_KEY = "items_json"
+    // _v2: o cache antigo nunca guardava o streamId (bug corrigido
+    // agora) — mudar a chave faz quem já tinha o app instalado buscar
+    // tudo de novo uma vez, com o streamId de verdade desta vez, em vez
+    // de continuar preso num cache antigo que nunca teria essa
+    // informação de qualquer jeito.
+    private const val CACHE_KEY = "items_json_v2"
 
     @Volatile private var cached: List<M3uItem> = emptyList()
     @Volatile var lastMessage: String = ""
@@ -234,6 +239,7 @@ object CatalogRepository {
                 logo = obj.optString("logo").ifBlank { null },
                 url = obj.optString("url"),
                 kind = kind,
+                streamId = obj.optStringOrNull("streamId"),
             )
         }
     }.getOrDefault(emptyList())
@@ -249,6 +255,7 @@ object CatalogRepository {
                         put("logo", item.logo ?: "")
                         put("url", item.url)
                         put("kind", item.kind.name)
+                        put("streamId", item.streamId ?: "")
                     }
                 )
             }

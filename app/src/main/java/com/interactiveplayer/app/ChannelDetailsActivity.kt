@@ -51,6 +51,7 @@ class ChannelDetailsActivity : ComponentActivity() {
     // O player em si vive no SharedChannelPlayer agora — não há mais um
     // ExoPlayer próprio desta tela.
     private lateinit var playerView: PlayerView
+    private lateinit var videoBox: FrameLayout
     private lateinit var channelNameText: TextView
     private lateinit var favoriteButton: TextView
     private lateinit var categoryText: TextView
@@ -73,6 +74,11 @@ class ChannelDetailsActivity : ComponentActivity() {
         startPlayback()
         loadEpg()
         askNotificationPermissionIfNeeded()
+        // Sem isso, nada tem foco quando a tela abre e apertar OK no
+        // controle não faz nada — a pessoa precisa primeiro navegar até
+        // algum lugar. Já deixa o foco na caixa de vídeo: OK abre a
+        // tela cheia direto, sem precisar navegar antes.
+        videoBox.requestFocus()
     }
 
     private fun itemFromIntent(source: Intent): M3uItem {
@@ -175,8 +181,10 @@ class ChannelDetailsActivity : ComponentActivity() {
             clipToOutline = true
             isFocusable = true
             isClickable = true
+            wireFocusHighlight()
             setOnClickListener { openFullscreenPlayer() }
         }
+        this.videoBox = videoBox
         playerView = PlayerView(this).apply { useController = false }
         videoBox.addView(playerView, FrameLayout.LayoutParams(-1, -1))
 

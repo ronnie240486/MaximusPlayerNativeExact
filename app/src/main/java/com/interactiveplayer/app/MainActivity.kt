@@ -65,7 +65,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        UiSound.init(this)
         setContentView(buildRoot())
         lifecycleScope.launch {
             val cachedItems = CatalogRepository.load(this@MainActivity)
@@ -270,10 +269,7 @@ class MainActivity : ComponentActivity() {
                     icon.setTextColor(if (highlight) Theme.accentCyan else Theme.textSecondary)
                     text.setTextColor(if (highlight) Theme.accentCyan else Theme.textSecondary)
                 }
-                setOnClickListener {
-                    UiSound.click()
-                    openNavTarget(label)
-                }
+                setOnClickListener { openNavTarget(label) }
             }
 
             inner.addView(
@@ -369,6 +365,7 @@ class MainActivity : ComponentActivity() {
             }
             isFocusable = true
             isClickable = true
+            wireFocusHighlightCircle()
             setOnClickListener {
                 startActivity(Intent(this@MainActivity, SearchActivity::class.java))
             }
@@ -379,6 +376,7 @@ class MainActivity : ComponentActivity() {
             scaleType = ImageView.ScaleType.CENTER_CROP
             isFocusable = true
             isClickable = true
+            wireFocusHighlightCircle()
             setOnClickListener {
                 startActivity(Intent(this@MainActivity, ProfilesActivity::class.java))
             }
@@ -757,10 +755,7 @@ class MainActivity : ComponentActivity() {
             isFocusable = true
             isClickable = true
             wireFocusHighlight()
-            setOnClickListener {
-                UiSound.click()
-                openItem(item)
-            }
+            setOnClickListener { openItem(item) }
         }
 
         val card = ImageView(this).apply {
@@ -789,10 +784,7 @@ class MainActivity : ComponentActivity() {
             isFocusable = true
             isClickable = true
             wireFocusHighlight()
-            setOnClickListener {
-                UiSound.click()
-                openItem(item)
-            }
+            setOnClickListener { openItem(item) }
         }
 
         val card = FrameLayout(this).apply {
