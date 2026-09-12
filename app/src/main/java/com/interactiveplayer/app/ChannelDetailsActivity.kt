@@ -415,62 +415,63 @@ class ChannelDetailsActivity : ComponentActivity() {
         gridOverlay = FrameLayout(this).apply { visibility = View.GONE }
 
         val backdrop = View(this).apply {
-            setBackgroundColor(Color.argb(1, 0, 0, 0))
+            // Tela cheia de verdade, fundo opaco — igual à referência
+            // original ("Canais" ocupando a tela inteira, não um
+            // painelzinho lateral com o vídeo aparecendo atrás).
+            setBackgroundColor(Color.rgb(11, 15, 26))
             isClickable = true
             setOnClickListener { closeChannelGrid() }
         }
         gridOverlay.addView(backdrop, FrameLayout.LayoutParams(-1, -1))
 
-        val panelWidth = minOf((resources.displayMetrics.widthPixels * 0.5f).toInt(), dp(380))
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.argb(235, 11, 15, 26))
             setPadding(0, dp(Theme.SPACING_MD), 0, 0)
         }
 
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(Theme.SPACING_MD), 0, dp(Theme.SPACING_MD), dp(8))
+            setPadding(dp(Theme.SPACING_LG), 0, dp(Theme.SPACING_LG), dp(Theme.SPACING_SM))
         }
         header.addView(TextView(this).apply {
             setText("Canais")
-            textSize = 16f
+            textSize = 26f
             setTextColor(Theme.white)
             setTypeface(Typeface.DEFAULT_BOLD)
         }, LinearLayout.LayoutParams(0, -2, 1f))
         header.addView(TextView(this).apply {
             setText("✕")
-            textSize = 18f
+            textSize = 22f
             setTextColor(Theme.white)
             isFocusable = true
             isClickable = true
-            setOnClickListener { closeChannelGrid() }
         })
+        (header.getChildAt(1) as TextView).setOnClickListener { closeChannelGrid() }
         panel.addView(header)
 
         val search = EditText(this).apply {
             hint = "Buscar canal..."
-            textSize = 13f
+            textSize = 15f
             setSingleLine(true)
             setTextColor(Theme.white)
             setHintTextColor(Theme.textMuted)
-            background = roundRect(Color.argb(20, 255, 255, 255), Theme.RADIUS_SM)
-            setPadding(dp(Theme.SPACING_SM), 0, dp(Theme.SPACING_SM), 0)
+            background = roundRect(Theme.darkSurface, Theme.RADIUS_MD)
+            setPadding(dp(Theme.SPACING_MD), 0, dp(Theme.SPACING_MD), 0)
         }
-        panel.addView(search, LinearLayout.LayoutParams(-1, dp(34)).apply {
-            leftMargin = dp(Theme.SPACING_MD)
-            rightMargin = dp(Theme.SPACING_MD)
-            bottomMargin = dp(8)
+        panel.addView(search, LinearLayout.LayoutParams(-1, dp(44)).apply {
+            leftMargin = dp(Theme.SPACING_LG)
+            rightMargin = dp(Theme.SPACING_LG)
+            bottomMargin = dp(Theme.SPACING_SM)
         })
 
         val categoryRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val categoryScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
-            setPadding(dp(Theme.SPACING_MD), 0, dp(Theme.SPACING_MD), 0)
+            setPadding(dp(Theme.SPACING_LG), 0, dp(Theme.SPACING_LG), 0)
             addView(categoryRow)
         }
-        panel.addView(categoryScroll, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+        panel.addView(categoryScroll, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(Theme.SPACING_SM) })
 
         val recycler = RecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@ChannelDetailsActivity)
@@ -479,7 +480,7 @@ class ChannelDetailsActivity : ComponentActivity() {
         recycler.adapter = gridAdapter
         panel.addView(recycler, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        gridOverlay.addView(panel, FrameLayout.LayoutParams(panelWidth, -1, Gravity.END))
+        gridOverlay.addView(panel, FrameLayout.LayoutParams(-1, -1))
 
         var selectedCategory: String? = null
         fun applyFilter() {
