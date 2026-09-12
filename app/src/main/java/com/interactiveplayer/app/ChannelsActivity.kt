@@ -43,6 +43,7 @@ class ChannelsActivity : ComponentActivity() {
     private var previewItem: M3uItem? = null
     private var searchQuery: String = ""
     private var pendingFocusUrl: String? = null
+    private val isTv: Boolean by lazy { DeviceType.isTV(this) }
 
     private lateinit var search: EditText
     private lateinit var categoriesView: LinearLayout
@@ -71,12 +72,17 @@ class ChannelsActivity : ComponentActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Theme.black)
+            // Margem de segurança do overscan: em TV de verdade, a
+            // primeira barra ficava cortada na borda da tela — TVs
+            // recortam uma faixa das bordas por padrão.
+            val safe = dpTV(28, 0)
+            setPadding(safe, safe, safe, safe)
         }
         root.addView(buildHeader())
 
         status = TextView(this).apply {
             setText("Carregando canais...")
-            textSize = 12f
+            textSize = spTV(15f, 12f)
             setTextColor(Theme.textSecondary)
         }
         root.addView(status, LinearLayout.LayoutParams(-1, -2).apply {
@@ -86,8 +92,8 @@ class ChannelsActivity : ComponentActivity() {
         })
 
         val body = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        body.addView(buildCategoriesColumn(), LinearLayout.LayoutParams(dp(170), -1))
-        body.addView(buildChannelListColumn(), LinearLayout.LayoutParams(dp(280), -1).apply {
+        body.addView(buildCategoriesColumn(), LinearLayout.LayoutParams(dpTV(230, 170), -1))
+        body.addView(buildChannelListColumn(), LinearLayout.LayoutParams(dpTV(360, 280), -1).apply {
             leftMargin = dp(Theme.SPACING_SM)
         })
         body.addView(buildPreviewColumn(), LinearLayout.LayoutParams(0, -1, 1f).apply {
@@ -124,7 +130,7 @@ class ChannelsActivity : ComponentActivity() {
         })
         search = EditText(this).apply {
             hint = "Buscar canal..."
-            textSize = 13f
+            textSize = spTV(16f, 13f)
             setSingleLine(true)
             setTextColor(Theme.white)
             setHintTextColor(Theme.textMuted)
@@ -185,7 +191,14 @@ class ChannelsActivity : ComponentActivity() {
             wireFocusHighlight()
             setOnClickListener { previewItem?.let { openFullscreen(it) } }
         }
-        previewPlayerView = PlayerView(this).apply { useController = false }
+        previewPlayerView = PlayerView(this).apply {
+            useController = false
+            // ZOOM em vez do FIT padrão: o vídeo preenche a caixa
+            // inteira (cortando um pouco as bordas se precisar) em vez
+            // de sobrar fundo vazio (as "partes azuis do lado") quando
+            // a proporção da caixa não bate exatamente com a do vídeo.
+            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+        }
         videoBox.addView(previewPlayerView, FrameLayout.LayoutParams(-1, -1))
         videoBox.addView(
             TextView(this).apply {
@@ -208,7 +221,7 @@ class ChannelsActivity : ComponentActivity() {
         }
         previewName = TextView(this).apply {
             setText("Selecione um canal")
-            textSize = 16f
+            textSize = spTV(22f, 16f)
             setTextColor(Theme.white)
             setTypeface(Typeface.DEFAULT_BOLD)
             maxLines = 1
@@ -238,7 +251,7 @@ class ChannelsActivity : ComponentActivity() {
 
         epgStatus = TextView(this).apply {
             setText("Navegue pela lista pra ver a programação.")
-            textSize = 12f
+            textSize = spTV(15f, 12f)
             setTextColor(Theme.textMuted)
         }
         column.addView(epgStatus, LinearLayout.LayoutParams(-1, -2))
@@ -294,14 +307,14 @@ class ChannelsActivity : ComponentActivity() {
         }
         val label1 = TextView(this).apply {
             setText(label)
-            textSize = 13f
+            textSize = spTV(16f, 13f)
             maxLines = 2
             setTextColor(if (selectedGroup == group) Theme.accentCyan else Theme.white)
         }
         row.addView(label1, LinearLayout.LayoutParams(0, -2, 1f))
         row.addView(TextView(this).apply {
             setText(count.toString())
-            textSize = 11f
+            textSize = spTV(13f, 11f)
             setTextColor(Theme.textMuted)
         })
         row.setOnClickListener {
@@ -374,17 +387,17 @@ class ChannelsActivity : ComponentActivity() {
     private fun buildEpgRow(program: EpgClient.Program): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(6), 0, dp(6))
+            setPadding(0, dp(10), 0, dp(10))
         }
         row.addView(TextView(this).apply {
             setText("${program.startLabel} ~ ${program.endLabel}")
-            textSize = 12f
+            textSize = spTV(16f, 12f)
             setTextColor(if (program.isNow) Theme.accentCyan else Theme.textMuted)
             setTypeface(if (program.isNow) Typeface.DEFAULT_BOLD else Typeface.DEFAULT)
-        }, LinearLayout.LayoutParams(dp(150), -2))
+        }, LinearLayout.LayoutParams(dp(if (isTv) 190 else 150), -2))
         row.addView(TextView(this).apply {
             setText(program.title)
-            textSize = 12f
+            textSize = spTV(17f, 12f)
             setTextColor(Theme.white)
             maxLines = 1
         }, LinearLayout.LayoutParams(0, -2, 1f))
@@ -454,22 +467,22 @@ private class ChannelListAdapter(
             layoutParams = RecyclerView.LayoutParams(-1, -2)
         }
         val number = TextView(context).apply {
-            textSize = 11f
+            textSize = context.spTV(13f, 11f)
             setTextColor(Theme.textMuted)
             tag = "number"
         }
-        row.addView(number, LinearLayout.LayoutParams(context.dp(24), -2))
+        row.addView(number, LinearLayout.LayoutParams(context.dp(30), -2))
         val logo = ImageView(context).apply {
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             background = context.roundRect(Theme.white, 6)
             tag = "logo"
         }
-        row.addView(logo, LinearLayout.LayoutParams(context.dp(28), context.dp(28)).apply {
+        row.addView(logo, LinearLayout.LayoutParams(context.dp(36), context.dp(36)).apply {
             leftMargin = context.dp(6)
-            rightMargin = context.dp(8)
+            rightMargin = context.dp(10)
         })
         val name = TextView(context).apply {
-            textSize = 12f
+            textSize = context.spTV(15f, 12f)
             setTextColor(Theme.white)
             maxLines = 1
             tag = "name"
@@ -483,7 +496,7 @@ private class ChannelListAdapter(
             wireFocusHighlightCircle()
             tag = "heart"
         }
-        row.addView(heart, LinearLayout.LayoutParams(context.dp(28), context.dp(28)))
+        row.addView(heart, LinearLayout.LayoutParams(context.dp(34), context.dp(34)))
         return Holder(row)
     }
 

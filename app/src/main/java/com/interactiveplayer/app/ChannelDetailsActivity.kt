@@ -185,7 +185,10 @@ class ChannelDetailsActivity : ComponentActivity() {
             setOnClickListener { openFullscreenPlayer() }
         }
         this.videoBox = videoBox
-        playerView = PlayerView(this).apply { useController = false }
+        playerView = PlayerView(this).apply {
+            useController = false
+            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+        }
         videoBox.addView(playerView, FrameLayout.LayoutParams(-1, -1))
 
         val topActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
