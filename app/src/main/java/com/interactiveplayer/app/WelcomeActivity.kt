@@ -42,6 +42,7 @@ class WelcomeActivity : ComponentActivity() {
     }
 
     private var audio: MediaPlayer? = null
+    private var effect: MediaPlayer? = null
     private var autoAdvance: Job? = null
     private var advanced = false
 
@@ -127,14 +128,15 @@ class WelcomeActivity : ComponentActivity() {
         session?.bannerUrl?.let { url -> loadRemoteBitmap(url) { logo.setImageBitmap(it) } }
         session?.logoUrl?.let { url -> loadRemoteBitmap(url) { logo.setImageBitmap(it) } }
 
-        runCatching {
-            val descriptor = assets.openFd("original_media/welcome.wav")
-            audio = MediaPlayer().apply {
-                setDataSource(descriptor.fileDescriptor, descriptor.startOffset, descriptor.length)
-                prepare()
-                start()
+        // O original toca DOIS áudios juntos: o efeito (swoosh) imediato
+        // e a voz 350ms depois — eu tinha portado só a voz. Os dois
+        // respeitam o interruptor "Áudio de boas-vindas" dos Ajustes.
+        if (AppPreferences.welcomeAudio(this)) {
+            playAsset("swoosh.mp3")?.let { effect = it }
+            lifecycleScope.launch {
+                delay(350)
+                if (!isFinishing) playAsset("welcome.wav")?.let { audio = it }
             }
-            descriptor.close()
         }
 
         // Entra sozinho depois de 6s, mesmo sem nenhum toque.
@@ -143,6 +145,15 @@ class WelcomeActivity : ComponentActivity() {
             openProfiles()
         }
     }
+
+    private fun playAsset(name: String): MediaPlayer? = runCatching {
+        val descriptor = assets.openFd("original_media/$name")
+        MediaPlayer().apply {
+            setDataSource(descriptor.fileDescriptor, descriptor.startOffset, descriptor.length)
+            prepare()
+            start()
+        }.also { descriptor.close() }
+    }.getOrNull()
 
     /** Protegido contra chamada dupla: toque e timer podem coincidir. */
     private fun openProfiles() {
@@ -175,6 +186,8 @@ class WelcomeActivity : ComponentActivity() {
         autoAdvance?.cancel()
         audio?.release()
         audio = null
+        effect?.release()
+        effect = null
         super.onDestroy()
     }
 }
