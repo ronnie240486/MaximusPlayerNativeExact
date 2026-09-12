@@ -89,6 +89,12 @@ class PlayerControls(
 
         // Toca em qualquer lugar do vídeo pra mostrar/esconder os controles.
         overlay.setOnClickListener { toggleVisibility() }
+        // Com o overlay INVISIBLE (controles escondidos), ele não recebe
+        // mais toque nenhum — é o root (o vídeo por trás) que precisa
+        // escutar o toque nesse estado, pra conseguir mostrar os
+        // controles de novo.
+        root.isClickable = true
+        root.setOnClickListener { if (!isControlsVisible()) showControls() }
 
         overlay.addView(buildTopBar(), FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         // Título solto sobre o vídeo (não mais espremido na barrinha de
@@ -364,18 +370,34 @@ class PlayerControls(
         }
     }
 
+    /** Pra PlayerActivity saber se um toque de D-pad deve só revelar os controles, ou já agir de verdade. */
+    fun isControlsVisible(): Boolean = overlay.alpha > 0.5f
+
+    /** Revela os controles sem consumir o toque que pediu isso — ver dispatchKeyEvent da PlayerActivity. */
+    fun showControls() = show()
+
     private fun toggleVisibility() {
         if (overlay.alpha > 0.5f) hide() else show()
     }
 
     private fun show() {
+        // VISIBLE de novo antes de animar — sem isso os botões continuam
+        // fora do alcance do D-pad até a animação também mexer nisso.
+        overlay.visibility = View.VISIBLE
         overlay.animate().alpha(1f).setDuration(150).start()
         scheduleAutoHide()
     }
 
     private fun hide() {
         hideJob?.cancel()
-        overlay.animate().alpha(0f).setDuration(150).start()
+        overlay.animate().alpha(0f).setDuration(150).withEndAction {
+            // INVISIBLE de verdade — não só transparente. Um botão com
+            // alpha 0 ainda existe pro sistema de foco: o D-pad
+            // continuava "navegando" por cima de botões que a pessoa
+            // não conseguia ver na tela. INVISIBLE tira eles da
+            // navegação até os controles aparecerem de novo.
+            overlay.visibility = View.INVISIBLE
+        }.start()
     }
 
     /** Some sozinho depois de 4s parado, igual a qualquer player de vídeo. */

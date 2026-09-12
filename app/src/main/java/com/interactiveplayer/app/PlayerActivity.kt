@@ -533,6 +533,26 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val isNavigationKey = event.keyCode in intArrayOf(
+            KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_DPAD_DOWN,
+            KeyEvent.KEYCODE_DPAD_LEFT,
+            KeyEvent.KEYCODE_DPAD_RIGHT,
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER,
+        )
+        // Com os controles escondidos, o primeiro toque no D-pad (pra
+        // qualquer direção, ou OK) só revela os botões — nunca navega
+        // nem clica em nada por baixo do pano. Só depois, com tudo
+        // visível de novo, o D-pad passa a funcionar normal.
+        if (event.action == KeyEvent.ACTION_DOWN && isNavigationKey && !controls.isControlsVisible()) {
+            controls.showControls()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             // Se a lista de canais estiver aberta, o voltar fecha ela
