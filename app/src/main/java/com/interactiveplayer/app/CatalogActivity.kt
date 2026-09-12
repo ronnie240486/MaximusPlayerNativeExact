@@ -145,6 +145,7 @@ class CatalogActivity : ComponentActivity() {
             setPadding(dp(4), dp(4), dp(4), dp(4))
             isFocusable = true
             isClickable = true
+            wireFocusHighlightCircle()
             setOnClickListener { finish() }
         })
         header.addView(TextView(this).apply {

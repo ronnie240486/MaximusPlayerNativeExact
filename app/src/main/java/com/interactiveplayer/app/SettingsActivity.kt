@@ -183,6 +183,7 @@ class SettingsActivity : ComponentActivity() {
             setPadding(dp(4), dp(4), dp(4), dp(4))
             isFocusable = true
             isClickable = true
+            wireFocusHighlightCircle()
             setOnClickListener { finish() }
         })
         header.addView(TextView(this).apply {
@@ -216,6 +217,7 @@ class SettingsActivity : ComponentActivity() {
             )
             isFocusable = true
             isClickable = true
+            wireFocusHighlight()
         }
 
         rowView.addView(TextView(this).apply {

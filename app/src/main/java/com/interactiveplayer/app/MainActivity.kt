@@ -679,6 +679,7 @@ class MainActivity : ComponentActivity() {
             setPadding(dp(16), dp(10), dp(16), dp(10))
             isFocusable = true
             isClickable = true
+            wireFocusHighlight()
             setOnClickListener {
                 current?.let {
                     startActivity(
@@ -701,6 +702,7 @@ class MainActivity : ComponentActivity() {
         heart.background = circleDrawable(Theme.whiteAlpha12)
         heart.isFocusable = true
         heart.isClickable = true
+        heart.wireFocusHighlightCircle()
         heart.setOnClickListener {
             if (current != null) {
                 val nowFavorite = FavoriteStore.toggle(this@MainActivity, current)
@@ -726,6 +728,7 @@ class MainActivity : ComponentActivity() {
                 val position = index
                 dot.isFocusable = true
                 dot.isClickable = true
+                dot.wireFocusHighlight(3)
                 dot.setOnClickListener {
                     heroIndex = position
                     renderHero()

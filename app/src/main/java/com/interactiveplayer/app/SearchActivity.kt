@@ -42,6 +42,7 @@ class SearchActivity : ComponentActivity() {
             textSize = 28f
             setTextColor(white)
             isFocusable = true
+            wireFocusHighlight()
             setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(dp(220), dp(62)))
         query = EditText(this).apply {

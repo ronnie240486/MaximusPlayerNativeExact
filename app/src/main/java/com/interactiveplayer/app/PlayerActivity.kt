@@ -141,6 +141,7 @@ class PlayerActivity : ComponentActivity() {
                 setPadding(dp(24), dp(12), dp(24), dp(12))
                 isFocusable = true
                 isClickable = true
+                wireFocusHighlight()
                 gravity = Gravity.CENTER
                 setOnClickListener { startPlayback(mediaUrl) }
             },
@@ -191,6 +192,7 @@ class PlayerActivity : ComponentActivity() {
             setTextColor(Theme.white)
             isFocusable = true
             isClickable = true
+            wireFocusHighlightCircle()
             setOnClickListener { gridOverlay.visibility = View.GONE }
         })
         panel.addView(header)
@@ -465,7 +467,7 @@ class PlayerActivity : ComponentActivity() {
         }, LinearLayout.LayoutParams(0, -2, 1f))
         if (!isNow) {
             val reminderId = "$streamId-${program.startLabel}-${program.title}"
-            val bell = TextView(this).apply { textSize = 13f; isFocusable = true; isClickable = true }
+            val bell = TextView(this).apply { textSize = 13f; isFocusable = true; isClickable = true; wireFocusHighlightCircle() }
             fun refresh() {
                 val scheduled = ProgramReminderStore.isScheduled(this@PlayerActivity, reminderId)
                 bell.setText(if (scheduled) "🔔" else "🔕")

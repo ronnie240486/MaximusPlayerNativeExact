@@ -107,6 +107,7 @@ class ProfileEditActivity : ComponentActivity() {
             setPadding(dp(4), dp(4), dp(4), dp(4))
             isFocusable = true
             isClickable = true
+            wireFocusHighlight(8)
             setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(dp(32), -2))
 
@@ -142,6 +143,7 @@ class ProfileEditActivity : ComponentActivity() {
                 gravity = Gravity.CENTER_HORIZONTAL
                 isFocusable = true
                 isClickable = true
+                wireFocusHighlight(8)
                 setOnClickListener {
                     selectedName = profile.name
                     avatarId = profile.avatar
@@ -185,6 +187,7 @@ class ProfileEditActivity : ComponentActivity() {
             gravity = Gravity.CENTER_HORIZONTAL
             isFocusable = true
             isClickable = true
+            wireFocusHighlight(8)
             setOnClickListener {
                 selectedName = null
                 avatarId = "avatar-1.jpg"
@@ -271,6 +274,7 @@ class ProfileEditActivity : ComponentActivity() {
             )
             isFocusable = true
             isClickable = true
+            wireFocusHighlight(14)
         }
 
         val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -358,6 +362,7 @@ class ProfileEditActivity : ComponentActivity() {
                 }
                 isFocusable = true
                 isClickable = true
+                wireFocusHighlight(14)
                 setOnClickListener {
                     avatarId = id
                     render()
@@ -406,6 +411,7 @@ class ProfileEditActivity : ComponentActivity() {
             setPadding(0, dp(14), 0, dp(14))
             isFocusable = true
             isClickable = true
+            wireFocusHighlight(10)
             setOnClickListener { saveProfile() }
         }, LinearLayout.LayoutParams(0, -2, 1f).apply {
             rightMargin = dp(Theme.SPACING_SM)
@@ -422,6 +428,7 @@ class ProfileEditActivity : ComponentActivity() {
             setPadding(0, dp(14), 0, dp(14))
             isFocusable = true
             isClickable = true
+            wireFocusHighlight(10)
             setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(0, -2, 1f))
 
@@ -444,6 +451,7 @@ class ProfileEditActivity : ComponentActivity() {
         setPadding(0, dp(14), 0, dp(14))
         isFocusable = true
         isClickable = true
+        wireFocusHighlight(10)
         setOnClickListener {
             selectedName?.let { store.remove(it) }
             finish()

@@ -56,6 +56,7 @@ class ScoreActivity : ComponentActivity() {
             setTypeface(Typeface.DEFAULT_BOLD)
             isFocusable = true
             isClickable = true
+            wireFocusHighlight()
             setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(Theme.SPACING_SM) })
 
@@ -95,6 +96,7 @@ class ScoreActivity : ComponentActivity() {
             refreshChip(this, sport)
             isFocusable = true
             isClickable = true
+            wireFocusHighlight()
             setOnClickListener {
                 selected = sport
                 refreshAllChips()

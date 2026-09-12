@@ -75,6 +75,7 @@ class RadioActivity : ComponentActivity() {
             setTypeface(Typeface.DEFAULT_BOLD)
             isFocusable = true
             isClickable = true
+            wireFocusHighlight()
             setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(Theme.SPACING_MD) })
 
@@ -142,6 +143,7 @@ class RadioActivity : ComponentActivity() {
             refreshChipColors(this, key)
             isFocusable = true
             isClickable = true
+            wireFocusHighlight(Theme.RADIUS_PILL)
             setOnClickListener {
                 selectedKey = key
                 search.setText("")
@@ -233,6 +235,7 @@ class RadioActivity : ComponentActivity() {
             setPadding(dp(Theme.SPACING_SM), dp(Theme.SPACING_SM), dp(Theme.SPACING_SM), dp(Theme.SPACING_SM))
             isFocusable = true
             isClickable = true
+            wireFocusHighlight()
             setOnClickListener {
                 startActivity(
                     Intent(this@RadioActivity, PlayerActivity::class.java)
@@ -273,6 +276,7 @@ class RadioActivity : ComponentActivity() {
             setTextColor(if (RadioFavoriteStore.contains(this@RadioActivity, station)) Theme.accentMagenta else Theme.textMuted)
             isFocusable = true
             isClickable = true
+            wireFocusHighlightCircle()
         }
         heart.setOnClickListener {
             val nowFavorite = RadioFavoriteStore.toggle(this, station)

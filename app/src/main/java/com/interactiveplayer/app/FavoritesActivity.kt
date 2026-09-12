@@ -44,6 +44,7 @@ class FavoritesActivity : ComponentActivity() {
             textSize = 28f
             setTextColor(white)
             isFocusable = true
+            wireFocusHighlight()
             setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(-1, dp(64)))
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(10), 0, dp(18)) }
@@ -98,6 +99,7 @@ class FavoritesActivity : ComponentActivity() {
             setTextColor(cyan)
             gravity = Gravity.CENTER
             isFocusable = true
+            wireFocusHighlight()
             setOnClickListener { FavoriteStore.remove(this@FavoritesActivity, favorite); render() }
         }, LinearLayout.LayoutParams(dp(110), dp(52)))
         list.addView(row, LinearLayout.LayoutParams(-1, dp(94)).apply { setMargins(0, 0, 0, dp(8)) })

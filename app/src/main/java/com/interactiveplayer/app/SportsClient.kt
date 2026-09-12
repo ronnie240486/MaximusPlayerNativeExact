@@ -3,6 +3,8 @@ package com.interactiveplayer.app
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -77,12 +79,21 @@ object SportsClient {
      * chamadas HTTP e deixava a aba de Futebol travada por dezenas de
      * segundos. Todas as chamadas rodam em paralelo aqui.
      */
+    // Sem isso, "Futebol" (15 competições x 5 dias = 75 chamadas)
+    // tentava abrir 75 conexões ao mesmo tempo pro mesmo servidor — o
+    // Android enfileira a maioria (limite de conexões por host), e a
+    // aba mais usada do Placar ficava lenta a ponto de parecer
+    // travada. No máximo 8 chamadas de verdade rodando por vez.
+    private val concurrencyLimit = Semaphore(8)
+
     suspend fun fetchDays(sport: Sport): List<Event> = coroutineScope {
         val today = LocalDate.now(ZoneOffset.UTC)
         val dates = (-2..2).map { today.plusDays(it.toLong()) }
         val jobs = dates.flatMap { date ->
             sport.paths.map { path ->
-                async(Dispatchers.IO) { fetchOne(sport.source, path, date) }
+                async(Dispatchers.IO) {
+                    concurrencyLimit.withPermit { fetchOne(sport.source, path, date) }
+                }
             }
         }
         jobs.flatMap { it.await() }

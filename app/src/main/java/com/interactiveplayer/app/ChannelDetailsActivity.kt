@@ -142,6 +142,7 @@ class ChannelDetailsActivity : ComponentActivity() {
             setPadding(dp(6), dp(4), dp(10), dp(4))
             isFocusable = true
             isClickable = true
+            wireFocusHighlightCircle()
             setOnClickListener { finish() }
         })
         channelNameText = TextView(this).apply {
@@ -156,6 +157,7 @@ class ChannelDetailsActivity : ComponentActivity() {
             textSize = 20f
             isFocusable = true
             isClickable = true
+            wireFocusHighlightCircle()
             setOnClickListener {
                 FavoriteStore.toggle(this@ChannelDetailsActivity, item)
                 refreshFavorite()
@@ -225,6 +227,7 @@ class ChannelDetailsActivity : ComponentActivity() {
             background = circleDrawable(Color.argb(150, 11, 15, 26))
             isFocusable = true
             isClickable = true
+            wireFocusHighlightCircle()
             setOnClickListener { onClick() }
         }
 
@@ -363,6 +366,7 @@ class ChannelDetailsActivity : ComponentActivity() {
                 textSize = 16f
                 isFocusable = true
                 isClickable = true
+                wireFocusHighlightCircle()
             }
             fun refreshBell() {
                 val scheduled = ProgramReminderStore.isScheduled(this@ChannelDetailsActivity, reminderId)
@@ -457,6 +461,7 @@ class ChannelDetailsActivity : ComponentActivity() {
             setTextColor(Theme.white)
             isFocusable = true
             isClickable = true
+            wireFocusHighlightCircle()
         })
         (header.getChildAt(1) as TextView).setOnClickListener { closeChannelGrid() }
         panel.addView(header)

@@ -70,6 +70,7 @@ class DiagnosticActivity : ComponentActivity() {
             setPadding(dp(4), dp(4), dp(4), dp(4))
             isFocusable = true
             isClickable = true
+            wireFocusHighlightCircle()
             setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(-2, -2))
         header.addView(TextView(this).apply {
@@ -85,6 +86,7 @@ class DiagnosticActivity : ComponentActivity() {
             setPadding(dp(4), dp(4), dp(4), dp(4))
             isFocusable = true
             isClickable = true
+            wireFocusHighlightCircle()
             setOnClickListener { if (!checking) runChecks() }
         }
         header.addView(refreshIcon)
@@ -260,6 +262,7 @@ class DiagnosticActivity : ComponentActivity() {
             setPadding(0, dp(10), 0, dp(10))
             isFocusable = true
             isClickable = true
+            wireFocusHighlight()
             setOnClickListener { onClick() }
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
                 topMargin = dp(Theme.SPACING_LG)

@@ -72,6 +72,7 @@ class ContentDetailsActivity : ComponentActivity() {
             setPadding(dp(4), dp(4), dp(4), dp(4))
             isFocusable = true
             isClickable = true
+            wireFocusHighlightCircle()
             setOnClickListener { finish() }
         })
         header.addView(TextView(this).apply {
@@ -143,6 +144,7 @@ class ContentDetailsActivity : ComponentActivity() {
             setPadding(dp(Theme.SPACING_MD), dp(10), dp(Theme.SPACING_MD), dp(10))
             isFocusable = true
             isClickable = true
+            wireFocusHighlight()
             setOnClickListener { openPlayer() }
         }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(Theme.SPACING_MD) })
 
@@ -217,6 +219,7 @@ class ContentDetailsActivity : ComponentActivity() {
             background = roundRect(Theme.darkSurfaceAlt, Theme.RADIUS_SM)
             isFocusable = true
             isClickable = true
+            wireFocusHighlight()
             setOnClickListener { action() }
         }
 
