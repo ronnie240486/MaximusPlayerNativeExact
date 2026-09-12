@@ -515,6 +515,7 @@ class ChannelDetailsActivity : ComponentActivity() {
                 refresh()
                 isFocusable = true
                 isClickable = true
+                wireFocusHighlight(Theme.RADIUS_PILL)
                 setOnClickListener {
                     selectedCategory = group
                     for (i in 0 until categoryRow.childCount) {
@@ -594,6 +595,16 @@ class ChannelDetailsActivity : ComponentActivity() {
         }
     }
 
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        if (keyCode == android.view.KeyEvent.KEYCODE_BACK &&
+            ::gridOverlay.isInitialized && gridOverlay.visibility == View.VISIBLE
+        ) {
+            closeChannelGrid()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
     override fun onStop() {
         // Não pausa nem libera aqui: pode ser só uma ida rápida pra
         // tela cheia (PlayerActivity), e o canal deve continuar tocando
@@ -630,6 +641,8 @@ internal class ChannelGridAdapter(
             gravity = Gravity.CENTER_VERTICAL
             setPadding(context.dp(Theme.SPACING_MD), context.dp(8), context.dp(Theme.SPACING_MD), context.dp(8))
             layoutParams = RecyclerView.LayoutParams(-1, -2)
+            isFocusable = true
+            wireFocusHighlight()
         }
         val logo = ImageView(context).apply {
             scaleType = ImageView.ScaleType.CENTER_INSIDE

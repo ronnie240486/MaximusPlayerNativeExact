@@ -155,7 +155,7 @@ class ProfilesActivity : ComponentActivity() {
             setPadding(dp(4), dp(4), dp(4), dp(4))
             isFocusable = true
             isClickable = true
-            background = focusOutline()
+            wireFocusHighlight(20)
             setOnClickListener {
                 startActivity(Intent(this@ProfilesActivity, MainActivity::class.java))
             }
@@ -208,7 +208,7 @@ class ProfilesActivity : ComponentActivity() {
             setPadding(dp(4), dp(4), dp(4), dp(4))
             isFocusable = true
             isClickable = true
-            background = focusOutline()
+            wireFocusHighlight(20)
             setOnClickListener {
                 startActivity(Intent(this@ProfilesActivity, ProfileEditActivity::class.java))
             }

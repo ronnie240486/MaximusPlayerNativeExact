@@ -256,6 +256,7 @@ class PlayerControls(
             background = circleDrawable(android.graphics.Color.argb(90, 30, 36, 56))
             isFocusable = true
             isClickable = true
+            wireFocusHighlightCircle()
             setOnClickListener {
                 onClick()
                 scheduleAutoHide()

@@ -263,7 +263,8 @@ class MainActivity : ComponentActivity() {
                     text,
                     LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(sideNavItemGap) }
                 )
-                background = focusBackground()
+                // Aqui o foco já é mostrado trocando a cor do ícone/texto
+                // pra ciano (abaixo) — não precisa do contorno também.
                 setOnFocusChangeListener { _, focused ->
                     val highlight = focused || isHome
                     icon.setTextColor(if (highlight) Theme.accentCyan else Theme.textSecondary)
@@ -755,7 +756,7 @@ class MainActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             isFocusable = true
             isClickable = true
-            background = focusBackground()
+            wireFocusHighlight()
             setOnClickListener {
                 UiSound.click()
                 openItem(item)
@@ -787,7 +788,7 @@ class MainActivity : ComponentActivity() {
             gravity = Gravity.CENTER_HORIZONTAL
             isFocusable = true
             isClickable = true
-            background = focusBackground()
+            wireFocusHighlight()
             setOnClickListener {
                 UiSound.click()
                 openItem(item)

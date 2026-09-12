@@ -3,6 +3,7 @@ package com.interactiveplayer.app
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.view.View
 
 /**
  * Portado 1:1 de `frontend/src/theme.ts` do repositório Maximus
@@ -70,6 +71,44 @@ fun Context.roundStroke(strokeColor: Int, radiusDp: Int, strokeDp: Int = 1): Gra
         cornerRadius = dpF(radiusDp.toFloat())
         setStroke(dp(strokeDp), strokeColor)
     }
+
+/**
+ * Contorno de foco do D-pad, de verdade — usa `foreground` (não
+ * `background`) pra não atropelar o fundo que a view já tiver, e liga
+ * um `OnFocusChangeListener` que muda a cor da borda de verdade.
+ *
+ * Antes existiam vários "focusBackground()"/"focusOutline()" espalhados
+ * pelo app que desenhavam uma borda TRANSPARENTE e nunca a trocavam de
+ * cor em lugar nenhum — ou seja, navegar pelo D-pad nunca mostrava onde
+ * o foco estava. Essa função substitui esse padrão.
+ */
+fun View.wireFocusHighlight(radiusDp: Int = Theme.RADIUS_SM) {
+    isFocusable = true
+    val ring = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        setColor(Color.TRANSPARENT)
+        cornerRadius = context.dpF(radiusDp.toFloat())
+        setStroke(context.dp(2), Color.TRANSPARENT)
+    }
+    foreground = ring
+    setOnFocusChangeListener { _, focused ->
+        ring.setStroke(context.dp(2), if (focused) Theme.accentCyan else Color.TRANSPARENT)
+    }
+}
+
+/** Mesma ideia, pros botões redondos (ícones do player). */
+fun View.wireFocusHighlightCircle() {
+    isFocusable = true
+    val ring = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(Color.TRANSPARENT)
+        setStroke(context.dp(2), Color.TRANSPARENT)
+    }
+    foreground = ring
+    setOnFocusChangeListener { _, focused ->
+        ring.setStroke(context.dp(2), if (focused) Theme.accentCyan else Color.TRANSPARENT)
+    }
+}
 
 /** Círculo sólido — usado nos logos de canal e nos botões redondos. */
 fun circleDrawable(color: Int): GradientDrawable =

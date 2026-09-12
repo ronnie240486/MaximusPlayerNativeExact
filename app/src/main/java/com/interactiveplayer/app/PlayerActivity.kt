@@ -259,6 +259,7 @@ class PlayerActivity : ComponentActivity() {
                 refresh()
                 isFocusable = true
                 isClickable = true
+                wireFocusHighlight(Theme.RADIUS_PILL)
                 setOnClickListener {
                     selectedCategory = group
                     for (i in 0 until categoryRow.childCount) {
@@ -534,6 +535,13 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
+            // Se a lista de canais estiver aberta, o voltar fecha ela
+            // primeiro — só sai da tela cheia (voltando pro mini player)
+            // se não tinha nada aberto por cima.
+            if (::gridOverlay.isInitialized && gridOverlay.visibility == View.VISIBLE) {
+                gridOverlay.visibility = View.GONE
+                return true
+            }
             finish()
             return true
         }

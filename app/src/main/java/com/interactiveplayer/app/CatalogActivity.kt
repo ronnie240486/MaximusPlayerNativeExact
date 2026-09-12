@@ -209,6 +209,7 @@ class CatalogActivity : ComponentActivity() {
             refreshChipColors(this, group)
             isFocusable = true
             isClickable = true
+            wireFocusHighlight()
             setOnClickListener {
                 selectedGroup = group
                 refreshAllChips()
@@ -338,6 +339,7 @@ private class CatalogAdapter(
             setPadding(context.dp(Theme.SPACING_SM), context.dp(Theme.SPACING_SM), context.dp(Theme.SPACING_SM), context.dp(Theme.SPACING_SM))
             isFocusable = true
             isClickable = true
+            wireFocusHighlight()
             layoutParams = RecyclerView.LayoutParams(-1, -2).apply { bottomMargin = context.dp(6) }
         }
         val number = TextView(context).apply {
@@ -383,6 +385,7 @@ private class CatalogAdapter(
             gravity = Gravity.CENTER
             isFocusable = true
             isClickable = true
+            wireFocusHighlightCircle()
             tag = "heart"
         }
         row.addView(heart, LinearLayout.LayoutParams(context.dp(36), context.dp(36)))
@@ -394,6 +397,7 @@ private class CatalogAdapter(
             orientation = LinearLayout.VERTICAL
             isFocusable = true
             isClickable = true
+            wireFocusHighlight()
             layoutParams = RecyclerView.LayoutParams(posterWidthPx, -2).apply {
                 (this as? ViewGroup.MarginLayoutParams)?.let {
                     it.rightMargin = context.dp(Theme.SPACING_SM)
