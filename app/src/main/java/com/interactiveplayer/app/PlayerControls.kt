@@ -51,12 +51,7 @@ class PlayerControls(
     private var player: ExoPlayer? = null
     private var hideJob: Job? = null
     private var progressJob: Job? = null
-    private var resizeModeIndex = 0
-    private val resizeModes = listOf(
-        AspectRatioFrameLayout.RESIZE_MODE_FIT,
-        AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-        AspectRatioFrameLayout.RESIZE_MODE_FILL,
-    )
+    private var currentUrl: String? = null
 
     private lateinit var overlay: FrameLayout
     private lateinit var titleText: TextView
@@ -68,11 +63,12 @@ class PlayerControls(
     private var draggingSeek = false
 
     /** Chamado depois que o ExoPlayer é criado, pra ligar os controles nele. */
-    fun bind(exo: ExoPlayer, title: String, logo: android.graphics.Bitmap? = null) {
+    fun bind(exo: ExoPlayer, title: String, url: String? = null, logo: android.graphics.Bitmap? = null) {
         player = exo
+        currentUrl = url
         titleText.setText(title)
         playerView.player = exo
-        playerView.resizeMode = resizeModes[resizeModeIndex]
+        playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
 
         exo.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -95,6 +91,15 @@ class PlayerControls(
         overlay.setOnClickListener { toggleVisibility() }
 
         overlay.addView(buildTopBar(), FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
+        // Título solto sobre o vídeo (não mais espremido na barrinha de
+        // cima) — fica acima da barra inferior, como na referência.
+        overlay.addView(
+            buildTitleOverlay(),
+            FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply {
+                leftMargin = dp(Theme.SPACING_MD)
+                bottomMargin = dp(96)
+            }
+        )
         // largura WRAP_CONTENT (-2), não MATCH_PARENT: com -1 o bloco
         // ocupava a tela toda e "gravity = CENTER_VERTICAL" só
         // centralizava verticalmente — os botões ficavam colados à
@@ -112,18 +117,9 @@ class PlayerControls(
             setPadding(dp(12), dp(10), dp(12), dp(10))
         }
         bar.addView(iconButton("‹", 22f) { onBack() }, LinearLayout.LayoutParams(dp(40), dp(40)))
-        titleText = TextView(activity).apply {
-            textSize = 15f
-            setTextColor(Theme.white)
-            setTypeface(Typeface.DEFAULT_BOLD)
-            maxLines = 1
-        }
-        bar.addView(titleText, LinearLayout.LayoutParams(0, -2, 1f).apply {
-            leftMargin = dp(Theme.SPACING_SM)
-        })
+        bar.addView(View(activity), LinearLayout.LayoutParams(0, -2, 1f))
 
-        // Lista de canais, só em canal ao vivo — era o que faltava pra
-        // trocar de canal sem sair da tela cheia.
+        // Lista de canais, só em canal ao vivo.
         onChannelGridRequested?.let { onRequest ->
             bar.addView(
                 iconButton("⊞", 18f) { onRequest() },
@@ -131,21 +127,44 @@ class PlayerControls(
             )
         }
 
-        // Dois modos de tela: FIT (mostra tudo, pode sobrar borda) e ZOOM
-        // (preenche a tela cortando as bordas) — os dois ícones de
-        // "expandir" da referência.
-        bar.addView(iconButton("⛶", 18f) { cycleResizeMode() }, LinearLayout.LayoutParams(dp(38), dp(38)))
+        // Dois botões separados — FIT (mostra tudo, pode sobrar borda) e
+        // ZOOM (preenche a tela cortando as bordas) — em vez de um só
+        // alternando, pra bater com os dois ícones de "expandir" da
+        // referência.
         bar.addView(
-            iconButton("CC", 12f) { showSubtitlePicker() },
-            LinearLayout.LayoutParams(dp(38), dp(38)).apply { leftMargin = dp(6) }
+            iconButton("⛶", 15f) { setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT) },
+            LinearLayout.LayoutParams(dp(38), dp(38)).apply { rightMargin = dp(6) }
+        )
+        bar.addView(
+            iconButton("⛶", 20f) { setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM) },
+            LinearLayout.LayoutParams(dp(38), dp(38)).apply { rightMargin = dp(6) }
+        )
+        // "Abrir externamente" — sem SDK de Chromecast aqui, então em
+        // vez de um cast de verdade isso manda o link pra outro app
+        // (VLC, navegador etc.) que consiga tocar.
+        bar.addView(
+            iconButton("⇱", 16f) { openExternally() },
+            LinearLayout.LayoutParams(dp(38), dp(38)).apply { rightMargin = dp(6) }
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             bar.addView(
                 iconButton("▭", 16f) { enterPip() },
-                LinearLayout.LayoutParams(dp(38), dp(38)).apply { leftMargin = dp(6) }
+                LinearLayout.LayoutParams(dp(38), dp(38)).apply { rightMargin = dp(6) }
             )
         }
+        bar.addView(iconButton("CC", 12f) { showSubtitlePicker() }, LinearLayout.LayoutParams(dp(38), dp(38)))
         return bar
+    }
+
+    /** Título solto sobre o vídeo, como na referência — não espremido na barra fina de cima. */
+    private fun buildTitleOverlay(): View {
+        titleText = TextView(activity).apply {
+            textSize = 20f
+            setTextColor(Theme.white)
+            setTypeface(Typeface.DEFAULT_BOLD)
+            maxLines = 1
+        }
+        return titleText
     }
 
     private fun buildCenterControls(): View {
@@ -254,15 +273,25 @@ class PlayerControls(
         exo.seekTo(target)
     }
 
-    private fun cycleResizeMode() {
-        resizeModeIndex = (resizeModeIndex + 1) % resizeModes.size
-        playerView.resizeMode = resizeModes[resizeModeIndex]
-        val label = when (resizeModes[resizeModeIndex]) {
+    private fun setResizeMode(mode: Int) {
+        playerView.resizeMode = mode
+        val label = when (mode) {
             AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> "Preencher tela (cortando bordas)"
-            AspectRatioFrameLayout.RESIZE_MODE_FILL -> "Esticar pra tela toda"
             else -> "Ajustar (mantém proporção original)"
         }
         Toast.makeText(activity, label, Toast.LENGTH_SHORT).show()
+    }
+
+    /** Sem SDK de Chromecast aqui — abre com outro app instalado que toque o link. */
+    private fun openExternally() {
+        val url = currentUrl ?: return
+        runCatching {
+            activity.startActivity(
+                android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+            )
+        }.onFailure {
+            Toast.makeText(activity, "Nenhum app encontrado pra abrir esse link.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     /** Lista as faixas de legenda disponíveis no stream e deixa escolher. */

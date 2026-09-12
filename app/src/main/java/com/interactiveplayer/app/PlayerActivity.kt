@@ -259,7 +259,7 @@ class PlayerActivity : ComponentActivity() {
                 showError("Não foi possível reproduzir esse conteúdo agora. Confere sua internet ou tenta de novo em instantes.")
             }
         })
-        controls.bind(exo, mediaTitle.ifBlank { "Reproduzindo" })
+        controls.bind(exo, mediaTitle.ifBlank { "Reproduzindo" }, url = url)
     }
 
     private fun showError(message: String) {
