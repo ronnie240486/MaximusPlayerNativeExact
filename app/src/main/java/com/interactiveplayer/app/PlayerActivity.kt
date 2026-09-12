@@ -1,25 +1,36 @@
 package com.interactiveplayer.app
 
 import android.app.PictureInPictureParams
+import android.content.Intent
+import android.graphics.Color
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.Rational
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.launch
 
 /**
  * Tela de reprodução em tela cheia — filmes, séries, rádio (chega
@@ -43,6 +54,10 @@ class PlayerActivity : ComponentActivity() {
     // de detalhes, sem reiniciar ao entrar/sair da tela cheia). Filme,
     // série e rádio continuam com o ExoPlayer próprio desta tela.
     private var isLive: Boolean = false
+    private var currentStreamId: String? = null
+    private var allChannels: List<M3uItem> = emptyList()
+    private lateinit var gridOverlay: FrameLayout
+    private lateinit var gridAdapter: ChannelGridAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,6 +65,7 @@ class PlayerActivity : ComponentActivity() {
         mediaUrl = intent.getStringExtra("url").orEmpty()
         mediaTitle = intent.getStringExtra("title").orEmpty()
         isLive = intent.getBooleanExtra("isLive", false)
+        currentStreamId = intent.getStringExtra("streamId")
 
         setContentView(buildLayout())
         // window.insetsController só existe depois que o DecorView é
@@ -75,8 +91,9 @@ class PlayerActivity : ComponentActivity() {
             activity = this,
             root = root,
             playerView = playerView,
-            isLive = false,
+            isLive = isLive,
             onBack = { finish() },
+            onChannelGridRequested = if (isLive) { { openChannelGrid() } } else null,
         )
         root.addView(controls.build(), FrameLayout.LayoutParams(-1, -1))
 
@@ -112,7 +129,104 @@ class PlayerActivity : ComponentActivity() {
         )
         root.addView(errorContainer, FrameLayout.LayoutParams(-1, -1, Gravity.CENTER))
 
+        if (isLive) root.addView(buildGridOverlay(), FrameLayout.LayoutParams(-1, -1))
+
         return root
+    }
+
+    // -----------------------------------------------------------------
+    // Lista de canais dentro da tela cheia (só ao vivo)
+    // -----------------------------------------------------------------
+
+    private fun buildGridOverlay(): View {
+        gridOverlay = FrameLayout(this).apply { visibility = View.GONE }
+
+        val backdrop = View(this).apply {
+            setBackgroundColor(Color.argb(1, 0, 0, 0))
+            isClickable = true
+            setOnClickListener { gridOverlay.visibility = View.GONE }
+        }
+        gridOverlay.addView(backdrop, FrameLayout.LayoutParams(-1, -1))
+
+        val panelWidth = minOf((resources.displayMetrics.widthPixels * 0.5f).toInt(), dp(380))
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.argb(235, 11, 15, 26))
+            setPadding(0, dp(Theme.SPACING_MD), 0, 0)
+        }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(Theme.SPACING_MD), 0, dp(Theme.SPACING_MD), dp(8))
+        }
+        header.addView(TextView(this).apply {
+            setText("Canais")
+            textSize = 16f
+            setTextColor(Theme.white)
+            setTypeface(Typeface.DEFAULT_BOLD)
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(TextView(this).apply {
+            setText("✕")
+            textSize = 18f
+            setTextColor(Theme.white)
+            isFocusable = true
+            isClickable = true
+            setOnClickListener { gridOverlay.visibility = View.GONE }
+        })
+        panel.addView(header)
+
+        val search = EditText(this).apply {
+            hint = "Buscar canal..."
+            textSize = 13f
+            setSingleLine(true)
+            setTextColor(Theme.white)
+            setHintTextColor(Theme.textMuted)
+            background = roundRect(Color.argb(20, 255, 255, 255), Theme.RADIUS_SM)
+            setPadding(dp(Theme.SPACING_SM), 0, dp(Theme.SPACING_SM), 0)
+        }
+        panel.addView(search, LinearLayout.LayoutParams(-1, dp(34)).apply {
+            leftMargin = dp(Theme.SPACING_MD)
+            rightMargin = dp(Theme.SPACING_MD)
+            bottomMargin = dp(8)
+        })
+
+        val recycler = RecyclerView(this).apply { layoutManager = LinearLayoutManager(this@PlayerActivity) }
+        gridAdapter = ChannelGridAdapter { chosen -> switchToChannel(chosen) }
+        recycler.adapter = gridAdapter
+        panel.addView(recycler, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        gridOverlay.addView(panel, FrameLayout.LayoutParams(panelWidth, -1, Gravity.END))
+
+        search.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                val query = s?.toString()?.trim()?.lowercase().orEmpty()
+                gridAdapter.submit(allChannels.filter { query.isEmpty() || it.name.lowercase().contains(query) })
+            }
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
+
+        lifecycleScope.launch {
+            allChannels = CatalogRepository.load(this@PlayerActivity).filter { it.kind == M3uItem.Kind.CHANNEL }
+            gridAdapter.submit(allChannels)
+        }
+
+        return gridOverlay
+    }
+
+    private fun openChannelGrid() {
+        gridOverlay.visibility = View.VISIBLE
+    }
+
+    /** Troca de canal sem sair da tela cheia — atualiza player, título e streamId. */
+    private fun switchToChannel(chosen: M3uItem) {
+        gridOverlay.visibility = View.GONE
+        mediaUrl = chosen.url
+        mediaTitle = chosen.name
+        currentStreamId = chosen.streamId
+        WatchHistoryStore.record(this, chosen)
+        startPlayback(mediaUrl)
     }
 
     private fun startPlayback(url: String) {

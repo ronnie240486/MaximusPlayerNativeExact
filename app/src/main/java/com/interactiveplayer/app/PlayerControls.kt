@@ -45,6 +45,8 @@ class PlayerControls(
     private val playerView: PlayerView,
     private val isLive: Boolean,
     private val onBack: () -> Unit,
+    /** Só preenchido em canal ao vivo — abre a lista de canais sem sair da tela cheia. */
+    private val onChannelGridRequested: (() -> Unit)? = null,
 ) {
     private var player: ExoPlayer? = null
     private var hideJob: Job? = null
@@ -93,7 +95,11 @@ class PlayerControls(
         overlay.setOnClickListener { toggleVisibility() }
 
         overlay.addView(buildTopBar(), FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
-        overlay.addView(buildCenterControls(), FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
+        // largura WRAP_CONTENT (-2), não MATCH_PARENT: com -1 o bloco
+        // ocupava a tela toda e "gravity = CENTER_VERTICAL" só
+        // centralizava verticalmente — os botões ficavam colados à
+        // esquerda em vez de no centro de verdade da tela.
+        overlay.addView(buildCenterControls(), FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
         overlay.addView(buildBottomBar(), FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
         return overlay
     }
@@ -115,6 +121,15 @@ class PlayerControls(
         bar.addView(titleText, LinearLayout.LayoutParams(0, -2, 1f).apply {
             leftMargin = dp(Theme.SPACING_SM)
         })
+
+        // Lista de canais, só em canal ao vivo — era o que faltava pra
+        // trocar de canal sem sair da tela cheia.
+        onChannelGridRequested?.let { onRequest ->
+            bar.addView(
+                iconButton("⊞", 18f) { onRequest() },
+                LinearLayout.LayoutParams(dp(38), dp(38)).apply { rightMargin = dp(6) }
+            )
+        }
 
         // Dois modos de tela: FIT (mostra tudo, pode sobrar borda) e ZOOM
         // (preenche a tela cortando as bordas) — os dois ícones de

@@ -265,9 +265,13 @@ class ChannelDetailsActivity : ComponentActivity() {
     }
 
     private fun openFullscreenPlayer() {
-        // Não libera nem pausa o player aqui — a PlayerActivity vai
-        // anexar no MESMO player (mesma URL), continuando de onde
-        // estava, sem re-buffer.
+        // Solta a PlayerView desta tela ANTES de abrir a tela cheia. Sem
+        // isso, quando a pessoa volta, o Media3 vê que esta PlayerView
+        // já "tem" esse player atribuído (mesmo que a superfície de
+        // vídeo tenha ido pra outra tela nesse meio tempo) e ignora a
+        // reatribuição no onResume — resultado: caixinha fica com tela
+        // preta em vez de voltar a mostrar o vídeo.
+        playerView.player = null
         startActivity(
             Intent(this, PlayerActivity::class.java)
                 .putExtra("url", item.url)
@@ -587,8 +591,8 @@ class ChannelDetailsActivity : ComponentActivity() {
     }
 }
 
-/** Linha simples (logo + nome) do painel de troca de canal. */
-private class ChannelGridAdapter(
+/** Linha simples (logo + nome) do painel de troca de canal — reaproveitado pela PlayerActivity. */
+internal class ChannelGridAdapter(
     private val onClick: (M3uItem) -> Unit,
 ) : RecyclerView.Adapter<ChannelGridAdapter.Holder>() {
 
