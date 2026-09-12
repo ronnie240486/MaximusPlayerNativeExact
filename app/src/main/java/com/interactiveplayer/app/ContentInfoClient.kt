@@ -16,6 +16,7 @@ object ContentInfoClient {
         val rating: String?,
         val year: String?,
         val backdrop: String?,
+        val youtubeTrailer: String?,
     )
 
     /** Deve ser chamado fora da thread principal. */
@@ -28,7 +29,7 @@ object ContentInfoClient {
             !xtream.rating.isNullOrBlank() &&
             !xtream.year.isNullOrBlank()
         if (complete) {
-            return Info(xtream!!.plot, xtream.genre, xtream.rating, xtream.year, xtream.backdrop)
+            return Info(xtream!!.plot, xtream.genre, xtream.rating, xtream.year, xtream.backdrop, xtream.youtubeTrailer)
         }
 
         val tmdb = TmdbClient.search(item.name, isSeries = item.kind == M3uItem.Kind.SERIES)
@@ -40,6 +41,9 @@ object ContentInfoClient {
             rating = xtream?.rating?.takeIf { it.isNotBlank() } ?: tmdb?.rating,
             year = xtream?.year?.takeIf { it.isNotBlank() } ?: tmdb?.year,
             backdrop = xtream?.backdrop?.takeIf { it.isNotBlank() } ?: tmdb?.backdrop,
+            // TMDB não devolve trailer do YouTube nessa busca simples —
+            // só o Xtream tem esse campo.
+            youtubeTrailer = xtream?.youtubeTrailer,
         )
     }
 }

@@ -29,6 +29,9 @@ import java.net.URL
 class ContentDetailsActivity : ComponentActivity() {
 
     private lateinit var favoriteButton: TextView
+    // Preenchido quando ContentInfoClient.fetch() responde, se o painel
+    // tiver o trailer certo (campo youtube_trailer do Xtream).
+    private var youtubeTrailerId: String? = null
     private lateinit var item: M3uItem
     private lateinit var plotText: TextView
     private lateinit var metaRow: LinearLayout
@@ -183,6 +186,7 @@ class ContentDetailsActivity : ComponentActivity() {
                 return@launch
             }
             plotText.setText(info.plot?.takeIf { it.isNotBlank() } ?: "Sem sinopse disponível para este título.")
+            youtubeTrailerId = info.youtubeTrailer
 
             info.rating?.takeIf { it.isNotBlank() }?.let { rating ->
                 metaRow.addView(TextView(this@ContentDetailsActivity).apply {
@@ -231,7 +235,12 @@ class ContentDetailsActivity : ComponentActivity() {
     }
 
     private fun openTrailer() {
-        startActivity(android.content.Intent(this, TrailerActivity::class.java).putExtra("title", item.name))
+        startActivity(
+            android.content.Intent(this, TrailerActivity::class.java)
+                .putExtra("title", item.name)
+                .putExtra("videoId", youtubeTrailerId)
+                .putExtra("query", "${item.name} trailer oficial")
+        )
     }
 
     private fun toggleFavorite() {

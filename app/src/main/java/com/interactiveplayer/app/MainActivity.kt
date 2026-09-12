@@ -634,6 +634,8 @@ class MainActivity : ComponentActivity() {
                     startActivity(
                         Intent(this@MainActivity, TrailerActivity::class.java)
                             .putExtra("title", it.name)
+                            .putExtra("videoId", info?.youtubeTrailer)
+                            .putExtra("query", "${it.name} trailer oficial")
                     )
                 }
             }

@@ -206,12 +206,25 @@ object CatalogRepository {
 
     private fun jsonArray(server: String, username: String, password: String, action: String): JSONArray {
         val endpoint = "$server/player_api.php?username=${encode(username)}&password=${encode(password)}&action=$action"
-        val connection = open(endpoint, 30000)
-        val code = connection.responseCode
-        val body = (if (code in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
-        connection.disconnect()
-        if (code !in 200..299 || body.isBlank()) return JSONArray()
-        return runCatching { JSONArray(body) }.getOrElse { JSONArray() }
+        // get_vod_streams em particular pode ter uma resposta enorme
+        // (milhares de títulos) — um timeout único e sem nova tentativa
+        // fazia "Filmes" ficar vazio sozinho quando só essa chamada
+        // engasgava, mesmo com canais e séries carregando bem.
+        repeat(2) { attempt ->
+            val body = runCatching {
+                val connection = open(endpoint, 45000)
+                val code = connection.responseCode
+                val text = (if (code in 200..299) connection.inputStream else connection.errorStream)
+                    ?.bufferedReader()?.use { it.readText() }.orEmpty()
+                connection.disconnect()
+                if (code !in 200..299 || text.isBlank()) null else text
+            }.getOrNull()
+            if (body != null) {
+                val parsed = runCatching { JSONArray(body) }.getOrNull()
+                if (parsed != null) return parsed
+            }
+        }
+        return JSONArray()
     }
 
     private fun open(url: String, timeout: Int): HttpURLConnection = (URL(url).openConnection() as HttpURLConnection).apply {

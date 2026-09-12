@@ -23,6 +23,10 @@ object XtreamInfoClient {
         val rating: String?,
         val releaseDate: String?,
         val backdrop: String?,
+        // O painel já resolve o trailer certo do YouTube pelo lado de
+        // lá — é ISSO que o TrailerActivity deveria usar antes de
+        // qualquer busca. Faltava eu ler esse campo.
+        val youtubeTrailer: String?,
     ) {
         /** Só os 4 primeiros dígitos, igual ao `.slice(0, 4)` do original. */
         val year: String? get() = releaseDate?.takeIf { it.length >= 4 }?.substring(0, 4)
@@ -63,6 +67,7 @@ object XtreamInfoClient {
                     ?.takeIf { it.length() > 0 }
                     ?.optString(0)
                     ?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) },
+                youtubeTrailer = node.optStringOrNull("youtube_trailer"),
             )
         }.getOrNull() ?: return null
 

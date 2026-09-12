@@ -75,6 +75,8 @@ class CatalogActivity : ComponentActivity() {
             setText("Carregando catálogo...")
             textSize = 12f
             setTextColor(Theme.textSecondary)
+            isFocusable = true
+            wireFocusHighlight()
         }
         root.addView(status, LinearLayout.LayoutParams(-1, -2).apply {
             leftMargin = dp(Theme.SPACING_MD)
@@ -244,6 +246,26 @@ class CatalogActivity : ComponentActivity() {
             FAVORITES -> base.filter { FavoriteStore.contains(this, it) }
             else -> base.filter { it.group == selectedGroup }
         }.filter { searchQuery.isEmpty() || it.name.lowercase().contains(searchQuery) }
+
+        // Catálogo carregou (tem canal, por exemplo), mas ESSA aba
+        // especificamente veio vazia — geralmente porque só a chamada
+        // dessa categoria engasgou no painel. Sem isso, a única saída
+        // era sair da tela e voltar por outro caminho.
+        if (base.isEmpty() && allItems.isNotEmpty() && selectedGroup == null && searchQuery.isEmpty()) {
+            status.setText("${modeTitle()} veio vazio — toque aqui pra tentar de novo")
+            status.setOnClickListener {
+                status.setOnClickListener(null)
+                status.setText("Tentando de novo...")
+                lifecycleScope.launch {
+                    allItems = CatalogRepository.load(this@CatalogActivity, force = true)
+                    renderCategories(allItems.filterForMode(mode).map { it.group }.distinct().sorted())
+                    renderItems()
+                }
+            }
+            adapter.submit(emptyList())
+            return
+        }
+        status.setOnClickListener(null)
 
         status.setText(
             if (filtered.isEmpty()) "Nenhum conteúdo encontrado"
