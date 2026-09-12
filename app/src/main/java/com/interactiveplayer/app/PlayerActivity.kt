@@ -39,12 +39,17 @@ class PlayerActivity : ComponentActivity() {
 
     private var mediaUrl: String = ""
     private var mediaTitle: String = ""
+    // Canal ao vivo usa o SharedChannelPlayer (mesmo player da caixinha
+    // de detalhes, sem reiniciar ao entrar/sair da tela cheia). Filme,
+    // série e rádio continuam com o ExoPlayer próprio desta tela.
+    private var isLive: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         mediaUrl = intent.getStringExtra("url").orEmpty()
         mediaTitle = intent.getStringExtra("title").orEmpty()
+        isLive = intent.getBooleanExtra("isLive", false)
 
         setContentView(buildLayout())
         // window.insetsController só existe depois que o DecorView é
@@ -114,26 +119,33 @@ class PlayerActivity : ComponentActivity() {
         errorContainer.visibility = View.GONE
         progressBar.visibility = View.VISIBLE
 
-        player?.release()
-        player = ExoPlayer.Builder(this).build().also { exo ->
-            exo.addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(state: Int) {
-                    when (state) {
-                        Player.STATE_BUFFERING -> progressBar.visibility = View.VISIBLE
-                        Player.STATE_READY -> progressBar.visibility = View.GONE
-                        Player.STATE_ENDED -> finish()
-                        else -> {}
-                    }
-                }
-                override fun onPlayerError(error: PlaybackException) {
-                    showError("Não foi possível reproduzir esse conteúdo agora. Confere sua internet ou tenta de novo em instantes.")
-                }
-            })
-            exo.setMediaItem(MediaItem.fromUri(Uri.parse(url)))
-            exo.prepare()
-            exo.playWhenReady = true
-            controls.bind(exo, mediaTitle.ifBlank { "Reproduzindo" })
+        val exo = if (isLive) {
+            // Mesma instância que a ChannelDetailsActivity já criou —
+            // continua exatamente de onde estava, sem re-buffer.
+            SharedChannelPlayer.playerFor(this, url)
+        } else {
+            player?.release()
+            ExoPlayer.Builder(this).build().also {
+                it.setMediaItem(MediaItem.fromUri(Uri.parse(url)))
+                it.prepare()
+                it.playWhenReady = true
+            }
         }
+        player = exo
+        exo.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                when (state) {
+                    Player.STATE_BUFFERING -> progressBar.visibility = View.VISIBLE
+                    Player.STATE_READY -> progressBar.visibility = View.GONE
+                    Player.STATE_ENDED -> if (!isLive) finish()
+                    else -> {}
+                }
+            }
+            override fun onPlayerError(error: PlaybackException) {
+                showError("Não foi possível reproduzir esse conteúdo agora. Confere sua internet ou tenta de novo em instantes.")
+            }
+        })
+        controls.bind(exo, mediaTitle.ifBlank { "Reproduzindo" })
     }
 
     private fun showError(message: String) {
@@ -181,13 +193,22 @@ class PlayerActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        player?.pause()
+        // Canal ao vivo: não pausa — precisa continuar tocando por trás
+        // pra caixinha de detalhes retomar de onde estava.
+        if (!isLive) player?.pause()
         super.onStop()
     }
 
     override fun onDestroy() {
         controls.release()
-        player?.release()
+        if (isLive) {
+            // Só desanexa: o SharedChannelPlayer continua vivo pra
+            // caixinha de detalhes reaproveitar. Quem libera de vez é a
+            // ChannelDetailsActivity, quando a pessoa sai do canal.
+            playerView.player = null
+        } else {
+            player?.release()
+        }
         player = null
         super.onDestroy()
     }

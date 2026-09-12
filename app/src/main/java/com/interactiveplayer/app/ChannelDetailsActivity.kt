@@ -48,7 +48,8 @@ import kotlinx.coroutines.withContext
  */
 class ChannelDetailsActivity : ComponentActivity() {
 
-    private var player: ExoPlayer? = null
+    // O player em si vive no SharedChannelPlayer agora — não há mais um
+    // ExoPlayer próprio desta tela.
     private lateinit var playerView: PlayerView
     private lateinit var channelNameText: TextView
     private lateinit var favoriteButton: TextView
@@ -259,20 +260,20 @@ class ChannelDetailsActivity : ComponentActivity() {
 
     private fun startPlayback() {
         if (item.url.isBlank()) return
-        player?.release()
-        player = ExoPlayer.Builder(this).build().also { exo ->
-            playerView.player = exo
-            exo.setMediaItem(MediaItem.fromUri(item.url))
-            exo.prepare()
-            exo.playWhenReady = true
-        }
+        val shared = SharedChannelPlayer.playerFor(this, item.url)
+        playerView.player = shared
     }
 
     private fun openFullscreenPlayer() {
+        // Não libera nem pausa o player aqui — a PlayerActivity vai
+        // anexar no MESMO player (mesma URL), continuando de onde
+        // estava, sem re-buffer.
         startActivity(
             Intent(this, PlayerActivity::class.java)
                 .putExtra("url", item.url)
                 .putExtra("title", item.name)
+                .putExtra("isLive", true)
+                .putExtra("streamId", item.streamId)
         )
     }
 
@@ -563,16 +564,25 @@ class ChannelDetailsActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         WatchHistoryStore.record(this, item)
+        // Reanexa a MESMA instância — se a pessoa voltou da tela cheia,
+        // o canal continua tocando exatamente de onde estava, sem
+        // reiniciar. Só recria de verdade se a URL mudou por fora.
+        if (item.url.isNotBlank()) {
+            playerView.player = SharedChannelPlayer.playerFor(this, item.url)
+        }
     }
 
     override fun onStop() {
-        player?.pause()
+        // Não pausa nem libera aqui: pode ser só uma ida rápida pra
+        // tela cheia (PlayerActivity), e o canal deve continuar tocando
+        // por trás pra voltar exatamente de onde estava.
         super.onStop()
     }
 
     override fun onDestroy() {
-        player?.release()
-        player = null
+        // "Sair de vez" desta tela (não indo pra tela cheia) é o único
+        // momento de liberar o player de verdade.
+        if (isFinishing) SharedChannelPlayer.release()
         super.onDestroy()
     }
 }

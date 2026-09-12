@@ -84,8 +84,18 @@ class SearchActivity : ComponentActivity() {
                 isFocusable = true
                 setOnFocusChangeListener { view, focused -> view.setBackgroundColor(if (focused) Color.rgb(43, 73, 96) else panel) }
                 setOnClickListener {
-                    if (item.kind == M3uItem.Kind.CHANNEL) startActivity(android.content.Intent(this@SearchActivity, PlayerActivity::class.java).putExtra("url", item.url).putExtra("title", item.name))
-                    else startActivity(android.content.Intent(this@SearchActivity, ContentDetailsActivity::class.java).apply { putExtra("name", item.name); putExtra("group", item.group); putExtra("logo", item.logo); putExtra("url", item.url); putExtra("kind", item.kind.name) })
+                    if (item.kind == M3uItem.Kind.CHANNEL) {
+                        startActivity(
+                            android.content.Intent(this@SearchActivity, ChannelDetailsActivity::class.java)
+                                .putExtra("name", item.name)
+                                .putExtra("group", item.group)
+                                .putExtra("logo", item.logo)
+                                .putExtra("url", item.url)
+                                .putExtra("streamId", item.streamId)
+                        )
+                    } else {
+                        startActivity(android.content.Intent(this@SearchActivity, ContentDetailsActivity::class.java).apply { putExtra("name", item.name); putExtra("group", item.group); putExtra("logo", item.logo); putExtra("url", item.url); putExtra("kind", item.kind.name) })
+                    }
                 }
             }
             results.addView(row, LinearLayout.LayoutParams(-1, dp(74)).apply { setMargins(0, 0, 0, dp(8)) })

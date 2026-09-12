@@ -105,7 +105,24 @@ class FavoritesActivity : ComponentActivity() {
     }
 
     private fun open(favorite: FavoriteStore.Favorite) {
-        startActivity(android.content.Intent(this, PlayerActivity::class.java).putExtra("url", favorite.url).putExtra("title", favorite.name))
+        if (favorite.kind == M3uItem.Kind.CHANNEL) {
+            // Canal vai pra tela de detalhes (caixinha + EPG), igual ao
+            // Catálogo e à Home — só a PlayerActivity direto pulava essa
+            // etapa, inconsistente com o resto do app.
+            startActivity(
+                android.content.Intent(this, ChannelDetailsActivity::class.java)
+                    .putExtra("name", favorite.name)
+                    .putExtra("group", favorite.group)
+                    .putExtra("logo", favorite.logo)
+                    .putExtra("url", favorite.url)
+            )
+        } else {
+            startActivity(
+                android.content.Intent(this, PlayerActivity::class.java)
+                    .putExtra("url", favorite.url)
+                    .putExtra("title", favorite.name)
+            )
+        }
     }
 
     private fun loadPoster(url: String, target: ImageView) {
