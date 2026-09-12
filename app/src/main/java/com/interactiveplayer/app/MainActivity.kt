@@ -57,6 +57,7 @@ class MainActivity : ComponentActivity() {
     private val isTv: Boolean by lazy { DeviceType.isTV(this) }
 
     private lateinit var homeBody: LinearLayout
+    private var catalogLoadFailed = false
     private var heroIndex = 0
     private var heroItems: List<M3uItem> = emptyList()
     private var heroHost: FrameLayout? = null
@@ -66,13 +67,38 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildRoot())
+        loadCatalogWithFallback()
+    }
+
+    /**
+     * Sem isso, quando as duas tentativas falhavam (rede lenta, painel
+     * fora do ar), a Home ficava parada pra sempre em "Carregando seu
+     * catálogo..." sem avisar nada nem oferecer tentar de novo — só um
+     * reinício manual do app resolvia.
+     */
+    private fun loadCatalogWithFallback() {
+        catalogLoadFailed = false
         lifecycleScope.launch {
             val cachedItems = CatalogRepository.load(this@MainActivity)
-            if (cachedItems.isNotEmpty()) renderCatalogHome(cachedItems)
+            if (cachedItems.isNotEmpty()) {
+                renderCatalogHome(cachedItems)
+                return@launch
+            }
 
             val freshItems = CatalogRepository.load(this@MainActivity, force = true)
-            if (freshItems.isNotEmpty()) renderCatalogHome(freshItems)
+            if (freshItems.isNotEmpty()) {
+                renderCatalogHome(freshItems)
+            } else {
+                catalogLoadFailed = true
+                rebuildHeroPlaceholder()
+            }
         }
+    }
+
+    private fun rebuildHeroPlaceholder() {
+        if (!::homeBody.isInitialized || homeBody.childCount == 0) return
+        homeBody.removeViewAt(0)
+        homeBody.addView(buildHero(emptyList()), 0)
     }
 
     override fun onResume() {
@@ -551,12 +577,27 @@ class MainActivity : ComponentActivity() {
 
         // styles.heroTitle
         box.addView(TextView(this).apply {
-            setText(current?.name ?: "Carregando seu catálogo…")
+            setText(
+                when {
+                    current != null -> current.name
+                    catalogLoadFailed -> "Não conseguimos carregar seu catálogo"
+                    else -> "Carregando seu catálogo…"
+                }
+            )
             textSize = 26f
             setTextColor(Theme.white)
             setTypeface(Typeface.DEFAULT_BOLD)
             maxLines = 2
         })
+
+        if (current == null && catalogLoadFailed) {
+            box.addView(TextView(this).apply {
+                setText("Verifique sua internet ou fale com seu revendedor. Toque em tentar de novo abaixo.")
+                textSize = 13f
+                setTextColor(Theme.textSecondary)
+                setLineSpacing(dpF(6f), 1f)
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        }
 
         // styles.heroMetaRow: estrela + nota, ano, pílula de qualidade
         val metaRow = LinearLayout(this).apply {
@@ -607,7 +648,7 @@ class MainActivity : ComponentActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         actions.addView(TextView(this).apply {
-            setText("▶  ASSISTIR")
+            setText(if (current == null && catalogLoadFailed) "⟳  TENTAR DE NOVO" else "▶  ASSISTIR")
             textSize = 13f
             setTextColor(Theme.black)
             setTypeface(Typeface.DEFAULT_BOLD)
@@ -616,7 +657,16 @@ class MainActivity : ComponentActivity() {
             setPadding(dp(18), dp(10), dp(18), dp(10))
             isFocusable = true
             isClickable = true
-            setOnClickListener { current?.let { openItem(it) } }
+            wireFocusHighlight()
+            setOnClickListener {
+                if (current != null) {
+                    openItem(current)
+                } else if (catalogLoadFailed) {
+                    setText("Tentando de novo...")
+                    isClickable = false
+                    loadCatalogWithFallback()
+                }
+            }
         }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(10) })
 
         actions.addView(TextView(this).apply {
