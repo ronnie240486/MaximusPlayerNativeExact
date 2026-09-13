@@ -166,10 +166,11 @@ class ChannelsActivity : ComponentActivity() {
             clipToPadding = false
         }
         channelAdapter = ChannelListAdapter(
+            onFocusPeek = { item -> peekEpg(item) },
             onActivate = { item ->
-                // Só o clique/OK troca o canal (nunca a navegação por
-                // D-pad sozinha, e nunca pula pra tela cheia — isso é
-                // só pelo vídeo/ícone de expandir).
+                // Só o clique/OK troca o canal de verdade (nunca pula
+                // pra tela cheia sozinho — isso é só pelo vídeo/ícone
+                // de expandir).
                 setPreview(item)
             },
             onToggleFavorite = { item -> FavoriteStore.toggle(this, item) },
@@ -369,14 +370,26 @@ class ChannelsActivity : ComponentActivity() {
         loadEpgFor(item)
     }
 
+    // Qual EPG foi pedido por último — usado tanto pra "espiar" (foco)
+    // quanto pra troca de verdade (OK), pra descartar respostas antigas
+    // fora de ordem quando a pessoa navega rápido pela lista.
+    private var latestEpgRequestUrl: String? = null
+
+    /** Navegar até um canal (sem confirmar) só atualiza o guia — o vídeo continua tocando o de antes. */
+    private fun peekEpg(item: M3uItem) {
+        if (item.url == previewItem?.url) return
+        loadEpgFor(item)
+    }
+
     private fun loadEpgFor(item: M3uItem) {
         epgList.removeAllViews()
         epgStatus.visibility = View.VISIBLE
         epgStatus.setText("Carregando programação...")
         val requestedFor = item.url
+        latestEpgRequestUrl = requestedFor
         lifecycleScope.launch {
             val programs = withContext(Dispatchers.IO) { EpgClient.fetchSchedule(this@ChannelsActivity, item) }
-            if (previewItem?.url != requestedFor) return@launch
+            if (latestEpgRequestUrl != requestedFor) return@launch
             if (programs.isEmpty()) {
                 epgStatus.setText("Sem informações de programação para este canal.")
                 return@launch
@@ -441,6 +454,7 @@ class ChannelsActivity : ComponentActivity() {
 
 /** Linha da lista central: número, logo, nome e coração. */
 private class ChannelListAdapter(
+    private val onFocusPeek: (M3uItem) -> Unit,
     private val onActivate: (M3uItem) -> Unit,
     private val onToggleFavorite: (M3uItem) -> Boolean,
     private val isFavorite: (M3uItem) -> Boolean,
@@ -547,9 +561,11 @@ private class ChannelListAdapter(
             refreshHeart()
         }
 
-        // Só o clique/OK troca o canal — navegar com o D-pad (mudar de
-        // foco) não mexe mais no preview sozinho, como estava antes.
+        // Navegar (mudar de foco) só atualiza o guia de horários — dá
+        // pra "espiar" a programação de vários canais sem trocar o que
+        // está tocando. Só o clique/OK troca o vídeo de verdade.
         holder.row.setOnClickListener { onActivate(item) }
+        holder.row.setOnFocusChangeListener { _, focused -> if (focused) onFocusPeek(item) }
     }
 
     class Holder(val row: LinearLayout) : RecyclerView.ViewHolder(row) {
