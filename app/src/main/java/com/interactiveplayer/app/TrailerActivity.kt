@@ -89,7 +89,18 @@ class TrailerActivity : ComponentActivity() {
         return header
     }
 
-    /** Embed padrão do YouTube por ID — o mesmo formato usado pelo player embutido (react-native-youtube-iframe). */
+    /**
+     * Embed padrão do YouTube por ID.
+     *
+     * Não dá pra simplesmente `loadUrl("https://youtube.com/embed/ID")`
+     * — isso conta como "navegação de nível superior" pro YouTube, e é
+     * exatamente o "Erro 153" que o comentário do trailer.tsx original
+     * avisava ("YouTube can be picky about — error 153 for a top-level
+     * navigation"). O truque: carregar uma página HTML PRÓPRIA, com
+     * `https://www.youtube.com` como origem (via loadDataWithBaseURL),
+     * contendo só um `<iframe>` apontando pro embed — aí o YouTube vê a
+     * origem certa e não bloqueia.
+     */
     private fun buildEmbeddedPlayer(videoId: String): View {
         val wrap = FrameLayout(this)
         val progress = ProgressBar(this).apply {
@@ -106,7 +117,19 @@ class TrailerActivity : ComponentActivity() {
                     if (request?.isForMainFrame == true) progress.visibility = View.GONE
                 }
             }
-            loadUrl("https://www.youtube.com/embed/$videoId?autoplay=1&playsinline=1")
+            val html = """
+                <html>
+                <body style="margin:0;padding:0;background:#000;">
+                <iframe width="100%" height="100%"
+                    src="https://www.youtube.com/embed/$videoId?autoplay=1&playsinline=1&fs=1"
+                    frameborder="0"
+                    allow="autoplay; encrypted-media"
+                    allowfullscreen>
+                </iframe>
+                </body>
+                </html>
+            """.trimIndent()
+            loadDataWithBaseURL("https://www.youtube.com", html, "text/html", "utf-8", null)
         }
         wrap.addView(web, FrameLayout.LayoutParams(-1, -1))
         wrap.addView(progress, FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER))
