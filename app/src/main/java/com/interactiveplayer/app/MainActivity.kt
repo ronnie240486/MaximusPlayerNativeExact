@@ -251,7 +251,6 @@ class MainActivity : ComponentActivity() {
             "trophy" to "Placar",
             "kids" to "Kids",
             "radio" to "Rádios",
-            "camera" to "Câmeras",
             "search" to "Busca",
             "diagnostic" to "Diagnóstico",
             "settings" to "Ajustes"
@@ -326,8 +325,6 @@ class MainActivity : ComponentActivity() {
             label == "Busca" -> startActivity(Intent(this@MainActivity, SearchActivity::class.java))
             label == "Rádios" -> startActivity(Intent(this@MainActivity, RadioActivity::class.java))
             label == "Placar" -> startActivity(Intent(this@MainActivity, ScoreActivity::class.java))
-            label == "Câmeras" ->
-                startActivity(Intent(this@MainActivity, WorldCamerasActivity::class.java))
             label == "Ajustes" ->
                 startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
             label == "Diagnóstico" ->
