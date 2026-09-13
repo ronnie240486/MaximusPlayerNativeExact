@@ -6,6 +6,7 @@ import android.view.Gravity
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 
@@ -22,16 +23,28 @@ class CameraViewActivity : ComponentActivity() {
             if (url.isNotBlank()) loadUrl(url)
         }
         root.addView(web, FrameLayout.LayoutParams(-1, -1))
-        root.addView(TextView(this).apply {
-            text = "‹  $title"
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.argb(170, 0, 0, 0))
+            setPadding(dp(8), 0, dp(24), 0)
+        }
+        header.addView(TextView(this).apply {
+            text = "‹"
             textSize = 22f
             setTextColor(Color.WHITE)
-            setBackgroundColor(Color.argb(170, 0, 0, 0))
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(24, 0, 24, 0)
+            setPadding(dp(8), dp(8), dp(16), dp(8))
             isFocusable = true
+            isClickable = true
+            wireFocusHighlightCircle()
             setOnClickListener { finish() }
-        }, FrameLayout.LayoutParams(-1, 64))
+        })
+        header.addView(TextView(this).apply {
+            text = title
+            textSize = 22f
+            setTextColor(Color.WHITE)
+        })
+        root.addView(header, FrameLayout.LayoutParams(-1, dp(64)))
         setContentView(root)
     }
 }

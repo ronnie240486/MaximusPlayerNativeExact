@@ -49,16 +49,27 @@ class ScoreActivity : ComponentActivity() {
                 dp(Theme.SPACING_MD)
             )
         }
-        root.addView(TextView(this).apply {
-            setText("‹  Jogos do Dia / Placar")
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        header.addView(TextView(this).apply {
+            setText("‹")
+            textSize = 24f
+            setTextColor(Theme.white)
+            setPadding(dp(4), dp(4), dp(10), dp(4))
+            isFocusable = true
+            isClickable = true
+            wireFocusHighlightCircle()
+            setOnClickListener { finish() }
+        })
+        header.addView(TextView(this).apply {
+            setText("Jogos do Dia / Placar")
             textSize = 20f
             setTextColor(Theme.white)
             setTypeface(Typeface.DEFAULT_BOLD)
-            isFocusable = true
-            isClickable = true
-            wireFocusHighlight()
-            setOnClickListener { finish() }
-        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(Theme.SPACING_SM) })
+        })
+        root.addView(header, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(Theme.SPACING_SM) })
 
         status = TextView(this).apply {
             textSize = 12f

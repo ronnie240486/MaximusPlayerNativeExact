@@ -38,13 +38,20 @@ class SearchActivity : ComponentActivity() {
         }
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         header.addView(TextView(this).apply {
-            text = "‹  Busca"
+            text = "‹"
+            textSize = 26f
+            setTextColor(white)
+            setPadding(dp(4), dp(4), dp(10), dp(4))
+            isFocusable = true
+            isClickable = true
+            wireFocusHighlightCircle()
+            setOnClickListener { finish() }
+        })
+        header.addView(TextView(this).apply {
+            text = "Busca"
             textSize = 28f
             setTextColor(white)
-            isFocusable = true
-            wireFocusHighlight()
-            setOnClickListener { finish() }
-        }, LinearLayout.LayoutParams(dp(220), dp(62)))
+        }, LinearLayout.LayoutParams(dp(170), dp(62)))
         query = EditText(this).apply {
             hint = "Digite o nome do canal, filme ou série"
             textSize = 18f

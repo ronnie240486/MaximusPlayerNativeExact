@@ -45,13 +45,23 @@ class WorldCamerasActivity : ComponentActivity() {
             setBackgroundColor(Color.rgb(8, 16, 30))
             setPadding(dp(24), dp(18), dp(24), dp(18))
         }
-        root.addView(TextView(this).apply {
-            text = "‹  Câmeras do Mundo"
+        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        header.addView(TextView(this).apply {
+            text = "‹"
+            textSize = 25f
+            setTextColor(white)
+            setPadding(dp(4), dp(4), dp(10), dp(4))
+            isFocusable = true
+            isClickable = true
+            wireFocusHighlightCircle()
+            setOnClickListener { finish() }
+        })
+        header.addView(TextView(this).apply {
+            text = "Câmeras do Mundo"
             textSize = 27f
             setTextColor(white)
-            isFocusable = true
-            setOnClickListener { finish() }
-        }, LinearLayout.LayoutParams(-1, dp(64)))
+        })
+        root.addView(header, LinearLayout.LayoutParams(-1, dp(64)))
         root.addView(TextView(this).apply {
             text = "Escolha um país para ver as câmeras ao vivo"
             textSize = 16f

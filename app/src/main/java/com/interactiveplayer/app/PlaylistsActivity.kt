@@ -25,13 +25,23 @@ class PlaylistsActivity : ComponentActivity() {
             setBackgroundColor(Color.rgb(8, 16, 30))
             setPadding(dp(24), dp(18), dp(24), dp(18))
         }
-        root.addView(TextView(this).apply {
-            text = "‹  Listas"
+        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        header.addView(TextView(this).apply {
+            text = "‹"
+            textSize = 26f
+            setTextColor(white)
+            setPadding(dp(4), dp(4), dp(10), dp(4))
+            isFocusable = true
+            isClickable = true
+            wireFocusHighlightCircle()
+            setOnClickListener { finish() }
+        })
+        header.addView(TextView(this).apply {
+            text = "Listas"
             textSize = 28f
             setTextColor(white)
-            isFocusable = true
-            setOnClickListener { finish() }
-        }, LinearLayout.LayoutParams(-1, dp(64)))
+        })
+        root.addView(header, LinearLayout.LayoutParams(-1, dp(64)))
         val session = MacSessionStore.load(this)
         root.addView(TextView(this).apply {
             text = "O painel disponibilizou ${session?.playlists?.size ?: 0} lista(s) para este MAC. Escolha qual usar."

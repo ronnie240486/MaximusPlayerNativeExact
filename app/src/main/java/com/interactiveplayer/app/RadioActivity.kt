@@ -69,14 +69,20 @@ class RadioActivity : ComponentActivity() {
 
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         header.addView(TextView(this).apply {
-            setText("‹  Rádios")
+            setText("‹")
+            textSize = 22f
+            setTextColor(Theme.white)
+            setPadding(dp(4), dp(4), dp(10), dp(4))
+            isFocusable = true
+            isClickable = true
+            wireFocusHighlightCircle()
+            setOnClickListener { finish() }
+        })
+        header.addView(TextView(this).apply {
+            setText("Rádios")
             textSize = 20f
             setTextColor(Theme.white)
             setTypeface(Typeface.DEFAULT_BOLD)
-            isFocusable = true
-            isClickable = true
-            wireFocusHighlight()
-            setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(Theme.SPACING_MD) })
 
         search = EditText(this).apply {
