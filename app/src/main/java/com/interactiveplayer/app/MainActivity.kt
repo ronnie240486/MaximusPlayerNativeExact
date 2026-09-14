@@ -12,6 +12,7 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
@@ -66,6 +67,9 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var homeBody: LinearLayout
     private var catalogLoadFailed = false
+    private lateinit var loadingOverlay: FrameLayout
+    private lateinit var loadingBar: ProgressBar
+    private lateinit var loadingPercentText: TextView
     private var heroIndex = 0
     private var heroItems: List<M3uItem> = emptyList()
     private var heroHost: FrameLayout? = null
@@ -75,6 +79,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildRoot())
+        animateLoadingProgress()
         loadCatalogWithFallback()
     }
 
@@ -90,6 +95,7 @@ class MainActivity : ComponentActivity() {
             val cachedItems = CatalogRepository.load(this@MainActivity)
             if (cachedItems.isNotEmpty()) {
                 renderCatalogHome(cachedItems)
+                dismissLoadingOverlay()
                 return@launch
             }
 
@@ -100,6 +106,7 @@ class MainActivity : ComponentActivity() {
                 catalogLoadFailed = true
                 rebuildHeroPlaceholder()
             }
+            dismissLoadingOverlay()
         }
     }
 
@@ -171,7 +178,70 @@ class MainActivity : ComponentActivity() {
 
         columns.addView(content, LinearLayout.LayoutParams(0, -1, 1f))
         root.addView(columns, FrameLayout.LayoutParams(-1, -1))
+        root.addView(buildLoadingOverlay(), FrameLayout.LayoutParams(-1, -1))
         return root
+    }
+
+    /**
+     * Modal cobrindo a tela inteira até o catálogo estar pronto — sem
+     * isso, a pessoa caía direto na Home e via ela vazia/carregando
+     * sem entender o que estava acontecendo. Mesmo levando só 5-10s, é
+     * melhor deixar bem claro que tem conteúdo vindo.
+     */
+    private fun buildLoadingOverlay(): View {
+        loadingOverlay = FrameLayout(this).apply { setBackgroundColor(Color.argb(235, 11, 15, 26)) }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        box.addView(TextView(this).apply {
+            setText("Carregando seu conteúdo...")
+            textSize = spTV(20f, 16f)
+            setTextColor(Theme.white)
+            setTypeface(Typeface.DEFAULT_BOLD)
+        }, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = dp(Theme.SPACING_MD) })
+
+        loadingBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+            progressTintList = android.content.res.ColorStateList.valueOf(Theme.accentCyan)
+        }
+        box.addView(loadingBar, LinearLayout.LayoutParams(dp(if (isTv) 360 else 240), dp(6)).apply {
+            bottomMargin = dp(Theme.SPACING_SM)
+        })
+
+        loadingPercentText = TextView(this).apply {
+            setText("0%")
+            textSize = spTV(14f, 12f)
+            setTextColor(Theme.textSecondary)
+        }
+        box.addView(loadingPercentText)
+
+        loadingOverlay.addView(box, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+        return loadingOverlay
+    }
+
+    /** Sobe até uns 90% sozinho enquanto espera — nunca chega em 100% até o catálogo chegar de verdade. */
+    private fun animateLoadingProgress() {
+        lifecycleScope.launch {
+            var value = 0
+            while (value < 90 && loadingOverlay.visibility == View.VISIBLE) {
+                delay(180)
+                value += (1..6).random()
+                if (value > 90) value = 90
+                loadingBar.progress = value
+                loadingPercentText.setText("$value%")
+            }
+        }
+    }
+
+    private fun dismissLoadingOverlay() {
+        if (!::loadingOverlay.isInitialized || loadingOverlay.visibility != View.VISIBLE) return
+        loadingBar.progress = 100
+        loadingPercentText.setText("100%")
+        loadingOverlay.animate().alpha(0f).setDuration(200).withEndAction {
+            loadingOverlay.visibility = View.GONE
+        }.start()
     }
 
     /**
