@@ -71,7 +71,10 @@ object M3uParser {
     private fun classify(name: String, group: String): M3uItem.Kind {
         val value = "$name $group".lowercase()
         return when {
-            KidsContent.matches(name, group) -> M3uItem.Kind.KIDS
+            // Só o nome da CATEGORIA decide Kids — um filme cujo nome
+            // tenha "família" não pode arrastar uma categoria genérica
+            // (tipo "STAR+" ou "TOP 10") pra dentro do Kids inteira.
+            KidsContent.matches(group) && !AdultContent.isAdultGroup(group) -> M3uItem.Kind.KIDS
             listOf("série", "series", "temporada", "season").any(value::contains) -> M3uItem.Kind.SERIES
             listOf("filme", "movie", "cinema", "netflix", "amazon prime", "ação", "suspense").any(value::contains) -> M3uItem.Kind.MOVIE
             else -> M3uItem.Kind.CHANNEL

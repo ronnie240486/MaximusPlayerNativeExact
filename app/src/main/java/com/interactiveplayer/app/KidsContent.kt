@@ -11,9 +11,10 @@ object KidsContent {
     private val keywords = listOf(
         "kids", "infantil", "infantis", "desenho", "desenhos", "cartoon", "cartoons",
         "children", "criança", "crianças", "baby", "bebê", "bebe", "junior", "júnior",
-        "animação", "animacao", "animado", "animados", "família", "familia", "toon",
+        "animação", "animacao", "animações", "animacoes", "animado", "animados", "família", "familia", "toon",
         "gloob", "discovery kids", "nick jr", "nickelodeon", "cartoon network",
-        "disney junior", "boomerang", "tooncast", "anime kids",
+        "disney junior", "boomerang", "tooncast", "anime", "animes", "crunchyroll",
+        "anos 90", "natal",
     )
 
     fun matches(vararg parts: String): Boolean {

@@ -185,7 +185,7 @@ class CatalogActivity : ComponentActivity() {
                 status.setText("Nenhum item carregado ainda. Puxando o catálogo...")
                 items = CatalogRepository.load(this@CatalogActivity, force = true)
             }
-            // Perfil infantil nunca vê conteúdo adulto, nem a categoria.
+            // Perfil infantil nunca vê conteúdo adulto em NENHUMA aba.
             allItems = if (ActiveProfileStore.isKidsActive(this@CatalogActivity)) {
                 items.filterNot { AdultContent.isAdultGroup(it.group) }
             } else {
@@ -196,9 +196,19 @@ class CatalogActivity : ComponentActivity() {
                 renderCategories(emptyList())
             } else {
                 val groups = allItems.filterForMode(mode).map { it.group }.distinct().sorted()
-                val (normal, adult) = groups.partition { !AdultContent.isAdultGroup(it) }
-                val ordered = CategoryOrderStore.load(this@CatalogActivity, mode.name, normal)
-                renderCategories(ordered + adult)
+                if (mode == M3uItem.Kind.KIDS) {
+                    // Dentro da própria aba Kids, adulto não aparece NUNCA,
+                    // nem trancado com cadeado — isso é independente de
+                    // qual perfil está navegando. "Kids" é conteúdo
+                    // curado pra criança, ponto final.
+                    val curated = groups.filterNot { AdultContent.isAdultGroup(it) }
+                    val ordered = CategoryOrderStore.load(this@CatalogActivity, mode.name, curated)
+                    renderCategories(ordered)
+                } else {
+                    val (normal, adult) = groups.partition { !AdultContent.isAdultGroup(it) }
+                    val ordered = CategoryOrderStore.load(this@CatalogActivity, mode.name, normal)
+                    renderCategories(ordered + adult)
+                }
                 renderItems()
             }
         }
@@ -307,7 +317,9 @@ class CatalogActivity : ComponentActivity() {
     }
 
     private fun renderItems() {
-        val base = allItems.filterForMode(mode)
+        val base = allItems.filterForMode(mode).let { list ->
+            if (mode == M3uItem.Kind.KIDS) list.filterNot { AdultContent.isAdultGroup(it.group) } else list
+        }
         val filtered = when (selectedGroup) {
             null -> base
             FAVORITES -> base.filter { FavoriteStore.contains(this, it) }
@@ -325,7 +337,8 @@ class CatalogActivity : ComponentActivity() {
                 status.setText("Tentando de novo...")
                 lifecycleScope.launch {
                     allItems = CatalogRepository.load(this@CatalogActivity, force = true)
-                    renderCategories(allItems.filterForMode(mode).map { it.group }.distinct().sorted())
+                    val groups = allItems.filterForMode(mode).map { it.group }.distinct().sorted()
+                    renderCategories(if (mode == M3uItem.Kind.KIDS) groups.filterNot { AdultContent.isAdultGroup(it) } else groups)
                     renderItems()
                 }
             }
