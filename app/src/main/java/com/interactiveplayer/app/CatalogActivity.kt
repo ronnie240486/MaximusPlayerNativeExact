@@ -197,7 +197,8 @@ class CatalogActivity : ComponentActivity() {
             } else {
                 val groups = allItems.filterForMode(mode).map { it.group }.distinct().sorted()
                 val (normal, adult) = groups.partition { !AdultContent.isAdultGroup(it) }
-                renderCategories(normal + adult)
+                val ordered = CategoryOrderStore.load(this@CatalogActivity, mode.name, normal)
+                renderCategories(ordered + adult)
                 renderItems()
             }
         }

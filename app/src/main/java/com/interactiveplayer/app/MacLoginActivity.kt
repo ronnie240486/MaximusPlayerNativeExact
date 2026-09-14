@@ -217,10 +217,7 @@ class MacLoginActivity : ComponentActivity() {
     }
 
     private fun openWelcome() {
-        // Ir pra tela de boas-vindas (com os 6s de espera + áudio) fazia
-        // sentido só na primeira abertura do app — repetir isso logo
-        // depois de um login explícito só atrasava chegar na Home.
-        startActivity(Intent(this, ProfilesActivity::class.java))
+        startActivity(Intent(this, WelcomeActivity::class.java))
         finish()
     }
 

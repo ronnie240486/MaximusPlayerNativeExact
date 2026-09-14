@@ -140,9 +140,27 @@ class SettingsActivity : ComponentActivity() {
         ))
         list.addView(row(
             icon = "☰",
-            title = "Ordem das categorias",
-            subtitle = "Arrastar pra mudar a ordem da barra lateral",
-            onClick = { startActivity(Intent(this, SidebarOrderActivity::class.java)) }
+            title = "Ordem da barra lateral",
+            subtitle = "Arrastar pra mudar a ordem dos itens da Home",
+            onClick = { startActivity(Intent(this, SidebarOrderActivity::class.java).putExtra("section", "sidebar")) }
+        ))
+        list.addView(row(
+            icon = "☰",
+            title = "Ordem das categorias de Canais",
+            subtitle = "Arrastar pra mudar a ordem dentro da aba Canais",
+            onClick = { startActivity(Intent(this, SidebarOrderActivity::class.java).putExtra("section", "channels")) }
+        ))
+        list.addView(row(
+            icon = "☰",
+            title = "Ordem das categorias de Filmes",
+            subtitle = "Arrastar pra mudar a ordem dentro da aba Filmes",
+            onClick = { startActivity(Intent(this, SidebarOrderActivity::class.java).putExtra("section", "MOVIE")) }
+        ))
+        list.addView(row(
+            icon = "☰",
+            title = "Ordem das categorias de Séries",
+            subtitle = "Arrastar pra mudar a ordem dentro da aba Séries",
+            onClick = { startActivity(Intent(this, SidebarOrderActivity::class.java).putExtra("section", "SERIES")) }
         ))
         list.addView(row(
             icon = "🩺",

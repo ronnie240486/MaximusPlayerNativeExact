@@ -300,9 +300,12 @@ class ChannelsActivity : ComponentActivity() {
         categoriesView.addView(categoryRow(FAVORITES, FAVORITES, favoritesCount))
         val counts = allChannels.groupingBy { it.group }.eachCount()
         // Categoria adulta sempre por último, nunca misturada com o
-        // resto — mesmo pra quem tem PIN configurado.
+        // resto — mesmo pra quem tem PIN configurado. A ordem
+        // customizada (Ajustes > Ordem das categorias de Canais) só
+        // vale pras categorias normais.
         val (adultGroups, normalGroups) = counts.keys.sorted().partition { AdultContent.isAdultGroup(it) }
-        normalGroups.forEach { group -> categoriesView.addView(categoryRow(group, group, counts.getValue(group))) }
+        val ordered = CategoryOrderStore.load(this, "channels", normalGroups)
+        ordered.forEach { group -> categoriesView.addView(categoryRow(group, group, counts.getValue(group))) }
         adultGroups.forEach { group -> categoriesView.addView(categoryRow(group, group, counts.getValue(group), locked = true)) }
     }
 
