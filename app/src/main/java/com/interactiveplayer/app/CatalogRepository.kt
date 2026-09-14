@@ -20,7 +20,10 @@ object CatalogRepository {
     // tudo de novo uma vez, com o streamId de verdade desta vez, em vez
     // de continuar preso num cache antigo que nunca teria essa
     // informação de qualquer jeito.
-    private const val CACHE_KEY = "items_json_v2"
+    // _v3: lista de palavras-chave de conteudo infantil ficou bem mais
+    // ampla (KidsContent.kt) - precisa forcar uma reclassificacao pra
+    // quem ja tinha cache salvo com a classificacao antiga e restrita.
+    private const val CACHE_KEY = "items_json_v3"
 
     @Volatile private var cached: List<M3uItem> = emptyList()
     @Volatile var lastMessage: String = ""
@@ -191,15 +194,11 @@ object CatalogRepository {
         }
     }.getOrDefault(emptyList())
 
-    private fun classifyMovie(name: String, group: String): M3uItem.Kind {
-        val value = "$name $group".lowercase()
-        return if (listOf("kids", "infantil", "desenho", "cartoon", "children").any(value::contains)) M3uItem.Kind.KIDS else M3uItem.Kind.MOVIE
-    }
+    private fun classifyMovie(name: String, group: String): M3uItem.Kind =
+        if (KidsContent.matches(name, group)) M3uItem.Kind.KIDS else M3uItem.Kind.MOVIE
 
-    private fun classifySeries(name: String, group: String): M3uItem.Kind {
-        val value = "$name $group".lowercase()
-        return if (listOf("kids", "infantil", "desenho", "cartoon", "children").any(value::contains)) M3uItem.Kind.KIDS else M3uItem.Kind.SERIES
-    }
+    private fun classifySeries(name: String, group: String): M3uItem.Kind =
+        if (KidsContent.matches(name, group)) M3uItem.Kind.KIDS else M3uItem.Kind.SERIES
 
     private fun categories(server: String, username: String, password: String, action: String): Map<String, String> {
         val json = jsonArray(server, username, password, action)

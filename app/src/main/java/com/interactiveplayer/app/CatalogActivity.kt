@@ -238,11 +238,34 @@ class CatalogActivity : ComponentActivity() {
             }
         }
 
-    /** Pede o PIN parental antes de liberar conteúdo adulto — sem PIN configurado, libera direto. */
+    /** Sem PIN nenhum configurado ainda — cria um agora, na hora, antes de liberar qualquer coisa. */
+    private fun promptCreatePin(onCreated: () -> Unit) {
+        val input = android.widget.EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = "Crie um PIN de 4 dígitos"
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Proteger conteúdo adulto")
+            .setMessage("Ainda não existe um PIN — crie um agora pra continuar.")
+            .setView(input)
+            .setPositiveButton("Criar e continuar") { _, _ ->
+                val pin = input.text?.toString().orEmpty()
+                if (pin.length >= 4) {
+                    AppPreferences.setParentalPin(this, pin)
+                    onCreated()
+                } else {
+                    android.widget.Toast.makeText(this, "O PIN precisa ter pelo menos 4 dígitos.", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    /** Pede o PIN parental antes de liberar conteúdo adulto — nunca libera sem PIN nenhum. */
     private fun requirePin(onCorrect: () -> Unit) {
         val pin = AppPreferences.parentalPin(this)
         if (pin.isNullOrBlank()) {
-            onCorrect()
+            promptCreatePin { onCorrect() }
             return
         }
         val input = android.widget.EditText(this).apply {
