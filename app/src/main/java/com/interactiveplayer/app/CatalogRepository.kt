@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -36,29 +37,37 @@ object CatalogRepository {
      * — quem chamar `load` de novo com `force = true` depois de mostrar
      * o cache é quem dispara a atualização de verdade em segundo plano.
      */
+    // Sem isso, o pré-carregamento disparado no login (GlobalScope) e
+    // a própria Home chamando load() de novo ao abrir podiam cair AO
+    // MESMO TEMPO — duas passadas pesadas de parse/classificação
+    // disputando a CPU fraca do TV box no mesmo instante, chegando a
+    // travar o app de verdade (ANR, "aguardar ou fechar"). Com o
+    // Mutex, quem chega depois só espera a carga que já está
+    // rodando terminar, em vez de começar outra do zero em paralelo.
+    private val loadMutex = kotlinx.coroutines.sync.Mutex()
+
     suspend fun load(context: Context, force: Boolean = false): List<M3uItem> {
         if (!force && cached.isNotEmpty()) return cached
-        // TUDO isso precisa rodar fora da thread principal — antes só
-        // fetch() estava protegido, mas ler/escrever o cache em disco
-        // (que processa milhares de itens em JSON) ficava direto na
-        // main thread. Num celular rápido isso passa despercebido
-        // (poucos milissegundos); num TV box fraco, esse mesmo trabalho
-        // trava a tela de verdade — era essa a diferença de
-        // desempenho entre os dois aparelhos.
-        return withContext(Dispatchers.IO) {
-            if (!force) {
-                val fromDisk = readDiskCache(context)
-                if (fromDisk.isNotEmpty()) {
-                    cached = fromDisk
-                    return@withContext fromDisk
+        return loadMutex.withLock {
+            // Confere de novo aqui dentro: pode ser que quem tava
+            // segurando o Mutex já tenha acabado de popular o cache
+            // enquanto a gente esperava a vez.
+            if (!force && cached.isNotEmpty()) return@withLock cached
+            withContext(Dispatchers.IO) {
+                if (!force) {
+                    val fromDisk = readDiskCache(context)
+                    if (fromDisk.isNotEmpty()) {
+                        cached = fromDisk
+                        return@withContext fromDisk
+                    }
                 }
+                val result = fetch(context)
+                if (result.isNotEmpty()) {
+                    cached = result
+                    writeDiskCache(context, result)
+                }
+                result
             }
-            val result = fetch(context)
-            if (result.isNotEmpty()) {
-                cached = result
-                writeDiskCache(context, result)
-            }
-            result
         }
     }
 

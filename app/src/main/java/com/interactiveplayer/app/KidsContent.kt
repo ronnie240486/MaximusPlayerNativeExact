@@ -14,7 +14,7 @@ object KidsContent {
         "animação", "animacao", "animações", "animacoes", "animado", "animados", "família", "familia", "toon",
         "gloob", "discovery kids", "nick jr", "nickelodeon", "cartoon network",
         "disney junior", "boomerang", "tooncast", "anime", "animes", "crunchyroll",
-        "anos 90", "natal",
+        "anos 90", "anos 80", "natal",
     )
 
     fun matches(vararg parts: String): Boolean {
