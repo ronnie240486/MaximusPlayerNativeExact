@@ -40,6 +40,7 @@ class ContentDetailsActivity : ComponentActivity() {
     private lateinit var plotText: TextView
     private lateinit var metaRow: LinearLayout
     private lateinit var backdrop: ImageView
+    private lateinit var largeBackdrop: ImageView
 
     // Só usado quando item.kind == SERIES.
     private var seasons: List<XtreamEpisodesClient.Season> = emptyList()
@@ -190,6 +191,22 @@ class ContentDetailsActivity : ComponentActivity() {
         }
         root.addView(plotText, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
 
+        // Imagem de fundo grande (backdrop de verdade do filme/série) —
+        // antes essa área ficava vazia; a única imagem usada era o
+        // pôster pequeno lá em cima.
+        largeBackdrop = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            background = roundRect(Theme.darkSurface, Theme.RADIUS_MD)
+            clipToOutline = true
+            visibility = View.GONE
+        }
+        root.addView(
+            largeBackdrop,
+            LinearLayout.LayoutParams(-1, dp(if (DeviceType.isTV(this)) 320 else 200)).apply {
+                topMargin = dp(Theme.SPACING_MD)
+            }
+        )
+
         seasonSection = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
@@ -279,16 +296,27 @@ class ContentDetailsActivity : ComponentActivity() {
 
     private fun buildEpisodeRow(episode: XtreamEpisodesClient.Episode): View {
         val row = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = LinearLayout.HORIZONTAL
             background = roundRect(Theme.darkSurface, Theme.RADIUS_SM)
             setPadding(dp(Theme.SPACING_SM), dp(Theme.SPACING_SM), dp(Theme.SPACING_SM), dp(Theme.SPACING_SM))
             isFocusable = true
             isClickable = true
             wireFocusHighlight()
             setOnClickListener { openEpisode(episode) }
-            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) }
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) }
         }
-        row.addView(TextView(this).apply {
+
+        val thumb = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            background = roundRect(Theme.darkSurfaceAlt, Theme.RADIUS_SM)
+            clipToOutline = true
+        }
+        row.addView(thumb, LinearLayout.LayoutParams(dp(120), dp(72)).apply { rightMargin = dp(Theme.SPACING_SM) })
+        val thumbUrl = episode.image?.takeIf { it.isNotBlank() } ?: item.logo
+        thumbUrl?.takeIf { it.isNotBlank() }?.let { loadImage(it, thumb) }
+
+        val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        texts.addView(TextView(this).apply {
             setText("${episode.episodeNumber}. ${episode.title}")
             textSize = 14f
             setTextColor(Theme.white)
@@ -296,13 +324,14 @@ class ContentDetailsActivity : ComponentActivity() {
             maxLines = 2
         })
         episode.plot?.takeIf { it.isNotBlank() }?.let { plot ->
-            row.addView(TextView(this).apply {
+            texts.addView(TextView(this).apply {
                 setText(plot)
                 textSize = 12f
                 setTextColor(Theme.textSecondary)
-                maxLines = 3
+                maxLines = 2
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
         }
+        row.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
         return row
     }
 
@@ -346,7 +375,10 @@ class ContentDetailsActivity : ComponentActivity() {
                     setTextColor(Theme.textSecondary)
                 })
             }
-            info.backdrop?.takeIf { it.isNotBlank() }?.let { loadImage(it, backdrop) }
+            info.backdrop?.takeIf { it.isNotBlank() }?.let {
+                loadImage(it, largeBackdrop)
+                largeBackdrop.visibility = View.VISIBLE
+            }
         }
     }
 

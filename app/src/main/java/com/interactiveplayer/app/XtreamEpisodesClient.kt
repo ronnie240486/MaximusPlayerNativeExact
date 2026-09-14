@@ -24,6 +24,7 @@ object XtreamEpisodesClient {
         val title: String,
         val containerExtension: String,
         val plot: String?,
+        val image: String?,
     )
 
     data class Season(val key: String, val episodes: List<Episode>)
@@ -61,6 +62,7 @@ object XtreamEpisodesClient {
                                     title = node.optStringOrNull("title") ?: "Episódio ${index + 1}",
                                     containerExtension = node.optStringOrNull("container_extension") ?: "mp4",
                                     plot = info?.optStringOrNull("plot"),
+                                    image = info?.optStringOrNull("movie_image"),
                                 )
                             )
                         }
