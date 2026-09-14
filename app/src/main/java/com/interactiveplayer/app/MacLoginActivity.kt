@@ -217,6 +217,16 @@ class MacLoginActivity : ComponentActivity() {
     }
 
     private fun openWelcome() {
+        // Dispara o carregamento do catálogo AGORA — não precisa
+        // esperar a pessoa passar pela tela de boas-vindas (6s) e
+        // escolher o perfil pra só então começar a buscar. Usando
+        // GlobalScope de propósito: não pode ser cancelado quando essa
+        // Activity fechar daqui a pouco, tem que continuar rodando em
+        // segundo plano até o fim, pra estar pronto quando a Home abrir.
+        @Suppress("OPT_IN_USAGE")
+        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+            CatalogRepository.load(applicationContext)
+        }
         startActivity(Intent(this, WelcomeActivity::class.java))
         finish()
     }
