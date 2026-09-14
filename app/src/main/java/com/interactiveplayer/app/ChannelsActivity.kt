@@ -168,10 +168,11 @@ class ChannelsActivity : ComponentActivity() {
         channelAdapter = ChannelListAdapter(
             onFocusPeek = { item -> peekEpg(item) },
             onActivate = { item ->
-                // Só o clique/OK troca o canal de verdade (nunca pula
-                // pra tela cheia sozinho — isso é só pelo vídeo/ícone
-                // de expandir).
-                setPreview(item)
+                // Clicar/OK confirma e troca o que está tocando. Se
+                // esse canal JÁ é o que está tocando, o mesmo clique
+                // de novo abre a tela cheia — sem precisar mirar no
+                // vídeo ou no ícone de expandir.
+                if (item.url == previewItem?.url) openFullscreen(item) else setPreview(item)
             },
             onToggleFavorite = { item -> FavoriteStore.toggle(this, item) },
             isFavorite = { item -> FavoriteStore.contains(this, item) },
@@ -275,7 +276,13 @@ class ChannelsActivity : ComponentActivity() {
                 status.setText("Carregando catálogo pela primeira vez...")
                 items = CatalogRepository.load(this@ChannelsActivity, force = true).filter { it.kind == M3uItem.Kind.CHANNEL }
             }
-            allChannels = items
+            // Perfil infantil nunca vê conteúdo adulto — nem a
+            // categoria aparece, com ou sem PIN.
+            allChannels = if (ActiveProfileStore.isKidsActive(this@ChannelsActivity)) {
+                items.filterNot { AdultContent.isAdultGroup(it.group) }
+            } else {
+                items
+            }
             if (allChannels.isEmpty()) {
                 status.setText("Nenhum canal carregado. Confira sua lista nas configurações.")
                 return@launch
@@ -291,12 +298,15 @@ class ChannelsActivity : ComponentActivity() {
         categoriesView.addView(categoryRow("Todos", null, allChannels.size))
         val favoritesCount = allChannels.count { FavoriteStore.contains(this, it) }
         categoriesView.addView(categoryRow(FAVORITES, FAVORITES, favoritesCount))
-        allChannels.groupingBy { it.group }.eachCount().toSortedMap().forEach { (group, count) ->
-            categoriesView.addView(categoryRow(group, group, count))
-        }
+        val counts = allChannels.groupingBy { it.group }.eachCount()
+        // Categoria adulta sempre por último, nunca misturada com o
+        // resto — mesmo pra quem tem PIN configurado.
+        val (adultGroups, normalGroups) = counts.keys.sorted().partition { AdultContent.isAdultGroup(it) }
+        normalGroups.forEach { group -> categoriesView.addView(categoryRow(group, group, counts.getValue(group))) }
+        adultGroups.forEach { group -> categoriesView.addView(categoryRow(group, group, counts.getValue(group), locked = true)) }
     }
 
-    private fun categoryRow(label: String, group: String?, count: Int): View {
+    private fun categoryRow(label: String, group: String?, count: Int, locked: Boolean = false): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -306,10 +316,10 @@ class ChannelsActivity : ComponentActivity() {
             setPadding(dp(Theme.SPACING_SM), dp(10), dp(Theme.SPACING_SM), dp(10))
         }
         val label1 = TextView(this).apply {
-            setText(label)
+            setText(if (locked) "🔒 $label" else label)
             textSize = spTV(16f, 13f)
             maxLines = 2
-            setTextColor(if (selectedGroup == group) Theme.accentCyan else Theme.white)
+            setTextColor(if (selectedGroup == group) Theme.accentCyan else if (locked) Theme.textMuted else Theme.white)
         }
         row.addView(label1, LinearLayout.LayoutParams(0, -2, 1f))
         row.addView(TextView(this).apply {
@@ -318,12 +328,46 @@ class ChannelsActivity : ComponentActivity() {
             setTextColor(Theme.textMuted)
         })
         row.setOnClickListener {
-            selectedGroup = group
-            renderCategories()
-            renderChannelList()
+            if (locked) {
+                requirePin { selectCategory(group) }
+            } else {
+                selectCategory(group)
+            }
         }
         row.layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(4) }
         return row
+    }
+
+    private fun selectCategory(group: String?) {
+        selectedGroup = group
+        renderCategories()
+        renderChannelList()
+    }
+
+    /** Pede o PIN parental antes de liberar conteúdo adulto — sem PIN configurado, libera direto. */
+    private fun requirePin(onCorrect: () -> Unit) {
+        val pin = AppPreferences.parentalPin(this)
+        if (pin.isNullOrBlank()) {
+            onCorrect()
+            return
+        }
+        val input = android.widget.EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = "PIN"
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Conteúdo adulto")
+            .setMessage("Digite o PIN parental pra continuar.")
+            .setView(input)
+            .setPositiveButton("Entrar") { _, _ ->
+                if (input.text?.toString() == pin) {
+                    onCorrect()
+                } else {
+                    android.widget.Toast.makeText(this, "PIN incorreto.", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
     private fun renderChannelList() {
@@ -563,8 +607,16 @@ private class ChannelListAdapter(
 
         // Navegar (mudar de foco) só atualiza o guia de horários — dá
         // pra "espiar" a programação de vários canais sem trocar o que
-        // está tocando. Só o clique/OK troca o vídeo de verdade.
+        // está tocando. Clicar/OK confirma e troca; clicar/OK de novo
+        // no canal que JÁ está tocando abre a tela cheia. Segurar
+        // OK/pressionar longo favorita direto, sem precisar mirar no
+        // coraçãozinho.
         holder.row.setOnClickListener { onActivate(item) }
+        holder.row.setOnLongClickListener {
+            onToggleFavorite(item)
+            refreshHeart()
+            true
+        }
         holder.row.setOnFocusChangeListener { _, focused -> if (focused) onFocusPeek(item) }
     }
 

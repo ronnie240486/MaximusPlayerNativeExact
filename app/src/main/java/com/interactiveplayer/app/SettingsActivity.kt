@@ -139,6 +139,12 @@ class SettingsActivity : ComponentActivity() {
             }
         ))
         list.addView(row(
+            icon = "☰",
+            title = "Ordem das categorias",
+            subtitle = "Arrastar pra mudar a ordem da barra lateral",
+            onClick = { startActivity(Intent(this, SidebarOrderActivity::class.java)) }
+        ))
+        list.addView(row(
             icon = "🩺",
             title = "Diagnóstico",
             subtitle = "Testar conexão com o backend",

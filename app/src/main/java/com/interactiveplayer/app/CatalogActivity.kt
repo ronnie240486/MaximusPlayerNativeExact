@@ -180,16 +180,24 @@ class CatalogActivity : ComponentActivity() {
 
     private fun loadPlaylist() {
         lifecycleScope.launch {
-            allItems = CatalogRepository.load(this@CatalogActivity)
-            if (allItems.isEmpty()) {
+            var items = CatalogRepository.load(this@CatalogActivity)
+            if (items.isEmpty()) {
                 status.setText("Nenhum item carregado ainda. Puxando o catálogo...")
-                allItems = CatalogRepository.load(this@CatalogActivity, force = true)
+                items = CatalogRepository.load(this@CatalogActivity, force = true)
+            }
+            // Perfil infantil nunca vê conteúdo adulto, nem a categoria.
+            allItems = if (ActiveProfileStore.isKidsActive(this@CatalogActivity)) {
+                items.filterNot { AdultContent.isAdultGroup(it.group) }
+            } else {
+                items
             }
             if (allItems.isEmpty()) {
                 status.setText("Nenhum item carregado. Confira sua lista nas configurações.")
                 renderCategories(emptyList())
             } else {
-                renderCategories(allItems.filterForMode(mode).map { it.group }.distinct().sorted())
+                val groups = allItems.filterForMode(mode).map { it.group }.distinct().sorted()
+                val (normal, adult) = groups.partition { !AdultContent.isAdultGroup(it) }
+                renderCategories(normal + adult)
                 renderItems()
             }
         }
@@ -199,12 +207,12 @@ class CatalogActivity : ComponentActivity() {
         categoriesView.removeAllViews()
         categoriesView.addView(categoryChip("Todos", null))
         categoriesView.addView(categoryChip(FAVORITES, FAVORITES))
-        groups.forEach { group -> categoriesView.addView(categoryChip(group, group)) }
+        groups.forEach { group -> categoriesView.addView(categoryChip(group, group, locked = AdultContent.isAdultGroup(group))) }
     }
 
-    private fun categoryChip(label: String, group: String?): View =
+    private fun categoryChip(label: String, group: String?, locked: Boolean = false): View =
         TextView(this).apply {
-            setText(label)
+            setText(if (locked) "🔒 $label" else label)
             textSize = 13f
             maxLines = 2
             setPadding(dp(Theme.SPACING_SM), dp(10), dp(Theme.SPACING_SM), dp(10))
@@ -213,14 +221,48 @@ class CatalogActivity : ComponentActivity() {
             isClickable = true
             wireFocusHighlight()
             setOnClickListener {
-                selectedGroup = group
-                refreshAllChips()
-                renderItems()
+                if (locked) {
+                    requirePin {
+                        selectedGroup = group
+                        refreshAllChips()
+                        renderItems()
+                    }
+                } else {
+                    selectedGroup = group
+                    refreshAllChips()
+                    renderItems()
+                }
             }
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
                 bottomMargin = dp(6)
             }
         }
+
+    /** Pede o PIN parental antes de liberar conteúdo adulto — sem PIN configurado, libera direto. */
+    private fun requirePin(onCorrect: () -> Unit) {
+        val pin = AppPreferences.parentalPin(this)
+        if (pin.isNullOrBlank()) {
+            onCorrect()
+            return
+        }
+        val input = android.widget.EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = "PIN"
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Conteúdo adulto")
+            .setMessage("Digite o PIN parental pra continuar.")
+            .setView(input)
+            .setPositiveButton("Entrar") { _, _ ->
+                if (input.text?.toString() == pin) {
+                    onCorrect()
+                } else {
+                    android.widget.Toast.makeText(this, "PIN incorreto.", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
 
     private fun refreshChipColors(chip: TextView, group: String?) {
         val active = selectedGroup == group

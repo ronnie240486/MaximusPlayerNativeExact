@@ -158,6 +158,7 @@ class ProfilesActivity : ComponentActivity() {
             isClickable = true
             wireFocusHighlight(20)
             setOnClickListener {
+                ActiveProfileStore.setActive(this@ProfilesActivity, profile)
                 startActivity(Intent(this@ProfilesActivity, MainActivity::class.java))
             }
         }

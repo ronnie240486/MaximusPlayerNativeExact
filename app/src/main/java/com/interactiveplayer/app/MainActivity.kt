@@ -36,6 +36,14 @@ import java.util.Locale
  */
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        /** Ordem padrão de fábrica — usada como base pro SidebarOrderActivity. */
+        val SIDEBAR_LABELS = listOf(
+            "Início", "Canais", "Filmes", "Séries", "Placar", "Kids",
+            "Rádios", "Busca", "Diagnóstico", "Ajustes"
+        )
+    }
+
     // Cada medida tem a versão de TV e a de celular em paisagem, como no
     // home.tsx (`isTV ? A : isLandscape ? B : C`). Cravar só o ramo isTV
     // fazia o conteúdo estourar a tela do celular.
@@ -243,18 +251,19 @@ class MainActivity : ComponentActivity() {
             setPadding(0, dp(Theme.SPACING_SM), 0, dp(Theme.SPACING_SM))
         }
 
-        val tabs = listOf(
-            "home" to "Início",
-            "tv" to "Canais",
-            "film" to "Filmes",
-            "series" to "Séries",
-            "trophy" to "Placar",
-            "kids" to "Kids",
-            "radio" to "Rádios",
-            "search" to "Busca",
-            "diagnostic" to "Diagnóstico",
-            "settings" to "Ajustes"
+        val iconByLabel = mapOf(
+            "Início" to "home",
+            "Canais" to "tv",
+            "Filmes" to "film",
+            "Séries" to "series",
+            "Placar" to "trophy",
+            "Kids" to "kids",
+            "Rádios" to "radio",
+            "Busca" to "search",
+            "Diagnóstico" to "diagnostic",
+            "Ajustes" to "settings",
         )
+        val tabs = SidebarOrderStore.load(this, SIDEBAR_LABELS).map { label -> (iconByLabel[label] ?: "home") to label }
 
         tabs.forEachIndexed { index, pair ->
             val iconName = pair.first
