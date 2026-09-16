@@ -14,8 +14,8 @@ object MacPanelClient {
     // já implementada em maximus-player-source/src/api/client.ts do
     // app React Native, pra clientes que ainda não foram migrados pro
     // Railway continuarem funcionando.
-    private const val PANEL_BASE_PRIMARY = "https://renciaappproduction.up.railway.app/api/v5"
-    private const val PANEL_ROOT_PRIMARY = "https://renciaappproduction.up.railway.app"
+    private const val PANEL_BASE_PRIMARY = "https://renciaapp.up.railway.app/api/v5"
+    private const val PANEL_ROOT_PRIMARY = "https://renciaapp.up.railway.app"
     private const val PANEL_BASE_FALLBACK = "https://renciaapp.manus.space/api/v5"
     private const val PANEL_ROOT_FALLBACK = "https://renciaapp.manus.space"
     private const val TEST_REGISTER_FALLBACK = "https://nuvixtv.sigmab.pro/api/chatbot/Yen129WPEa/XYgD9JWr6V"
