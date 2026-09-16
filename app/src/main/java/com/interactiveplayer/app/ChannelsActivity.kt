@@ -436,6 +436,11 @@ class ChannelsActivity : ComponentActivity() {
         if (item.url.isNotBlank()) {
             SharedChannelPlayer.currentItem = item
             previewPlayerView.player = SharedChannelPlayer.playerFor(this, item.url)
+            // Sem isso, o painel (Dispositivos Conectados) nunca sabia
+            // qual canal essa telinha estava tocando de verdade - inclusive
+            // o auto-preview do primeiro canal ao abrir a tela, que já é
+            // uma conexão real com o servidor mesmo sem a pessoa clicar.
+            HeartbeatReporter.start(this, this, item.name)
         }
 
         loadEpgFor(item)
@@ -515,10 +520,16 @@ class ChannelsActivity : ComponentActivity() {
         previewItem?.url?.takeIf { it.isNotBlank() }?.let { url ->
             previewPlayerView.player = SharedChannelPlayer.playerFor(this, url)
         }
+        // Retomando essa tela (voltou da tela cheia, por ex.) - garante que
+        // o painel continua sendo avisado do canal certo.
+        previewItem?.let { HeartbeatReporter.start(this, this, it.name) }
     }
 
     override fun onDestroy() {
-        if (isFinishing) SharedChannelPlayer.release()
+        if (isFinishing) {
+            SharedChannelPlayer.release()
+            HeartbeatReporter.stop()
+        }
         super.onDestroy()
     }
 }

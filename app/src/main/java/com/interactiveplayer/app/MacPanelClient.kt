@@ -18,6 +18,8 @@ object MacPanelClient {
     private const val PANEL_ROOT_PRIMARY = "https://renciaapp-production.up.railway.app"
     private const val PANEL_BASE_FALLBACK = "https://renciaapp.manus.space/api/v5"
     private const val PANEL_ROOT_FALLBACK = "https://renciaapp.manus.space"
+    private const val PANEL_BASE_V4_PRIMARY = "https://renciaapp-production.up.railway.app/api/v4"
+    private const val PANEL_BASE_V4_FALLBACK = "https://renciaapp.manus.space/api/v4"
     private const val TEST_REGISTER_FALLBACK = "https://nuvixtv.sigmab.pro/api/chatbot/Yen129WPEa/XYgD9JWr6V"
 
     data class CheckResult(
@@ -71,6 +73,37 @@ object MacPanelClient {
             (code in 200..299) to body
         }.getOrElse { false to it.message.orEmpty() }
     }
+
+    /**
+     * Avisa o painel o que está sendo assistido nesse MAC agora — é isso
+     * que faz "Dispositivos Conectados" mostrar o nome do canal, não só
+     * "online" (mesmo endpoint e formato que o app React Native já usa).
+     * Best-effort: chamado de um timer periódico (ver HeartbeatReporter),
+     * nunca deve atrapalhar a reprodução se falhar.
+     */
+    fun sendHeartbeat(mac: String, content: String) {
+        if (!postJson("$PANEL_BASE_V4_PRIMARY/heartbeat.php", mac, content)) {
+            postJson("$PANEL_BASE_V4_FALLBACK/heartbeat.php", mac, content)
+        }
+    }
+
+    private fun postJson(url: String, mac: String, content: String): Boolean = runCatching {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 8000
+            readTimeout = 8000
+            requestMethod = "POST"
+            doOutput = true
+            setRequestProperty("Accept", "application/json, text/plain, */*")
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("User-Agent", USER_AGENT)
+        }
+        connection.outputStream.use {
+            it.write(JSONObject().put("mac", mac).put("content", content).toString().toByteArray())
+        }
+        val code = connection.responseCode
+        connection.disconnect()
+        code in 200..299
+    }.getOrDefault(false)
 
     fun fetchExtras(mac: String): Map<String, String> = runCatching {
         val json = JSONObject(guimFor(mac))

@@ -277,6 +277,7 @@ class ChannelDetailsActivity : ComponentActivity() {
         SharedChannelPlayer.currentItem = item
         val shared = SharedChannelPlayer.playerFor(this, item.url)
         playerView.player = shared
+        HeartbeatReporter.start(this, this, item.name)
     }
 
     private fun openFullscreenPlayer() {
@@ -608,6 +609,10 @@ class ChannelDetailsActivity : ComponentActivity() {
         // reiniciar. Só recria de verdade se a URL mudou por fora.
         if (item.url.isNotBlank()) {
             playerView.player = SharedChannelPlayer.playerFor(this, item.url)
+            // Retomando dessa tela (voltou da tela cheia, por ex.) — garante
+            // que o painel continua sendo avisado do canal certo, mesmo que
+            // a PlayerActivity tenha assumido o heartbeat enquanto estava lá.
+            HeartbeatReporter.start(this, this, item.name)
         }
     }
 
@@ -631,7 +636,10 @@ class ChannelDetailsActivity : ComponentActivity() {
     override fun onDestroy() {
         // "Sair de vez" desta tela (não indo pra tela cheia) é o único
         // momento de liberar o player de verdade.
-        if (isFinishing) SharedChannelPlayer.release()
+        if (isFinishing) {
+            SharedChannelPlayer.release()
+            HeartbeatReporter.stop()
+        }
         super.onDestroy()
     }
 }

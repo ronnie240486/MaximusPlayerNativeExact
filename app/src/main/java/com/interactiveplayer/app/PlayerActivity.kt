@@ -353,6 +353,12 @@ class PlayerActivity : ComponentActivity() {
         // o estado atual, sem depender só do listener.
         progressBar.visibility = if (exo.playbackState == Player.STATE_READY) View.GONE else View.VISIBLE
         controls.bind(exo, mediaTitle.ifBlank { "Reproduzindo" }, url = url)
+
+        // Avisa o painel qual canal está passando aqui — sem isso, o
+        // "Dispositivos Conectados" nunca sabia que a pessoa tinha ido
+        // pra tela cheia, e ficava preso no canal que a caixinha (mini
+        // player) tinha reportado por último.
+        if (isLive && mediaTitle.isNotBlank()) HeartbeatReporter.start(this, this, mediaTitle)
     }
 
     // -----------------------------------------------------------------
