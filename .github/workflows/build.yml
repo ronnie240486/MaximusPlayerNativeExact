@@ -19,7 +19,7 @@ jobs:
           java-version: 21
 
       - name: Preparar o Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Dar permissão de execução ao gradlew
         run: chmod +x gradlew
