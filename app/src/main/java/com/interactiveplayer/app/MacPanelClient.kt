@@ -6,8 +6,18 @@ import java.net.URL
 import java.net.URLEncoder
 
 object MacPanelClient {
-    private const val PANEL_BASE = "https://renciaapp.manus.space/api/v5"
-    private const val PANEL_ROOT = "https://renciaapp.manus.space"
+    // Migração Railway (ver "Migração dos Apps para o Railway"): o
+    // painel de administração (onde MAC/cliente é cadastrado) mudou do
+    // Manus pro Railway. Railway é tentado primeiro; se ele disser que
+    // o cliente está liberado, usa a resposta dele. Se não (ou se a
+    // chamada falhar), tenta o Manus antes de negar — igual à lógica
+    // já implementada em maximus-player-source/src/api/client.ts do
+    // app React Native, pra clientes que ainda não foram migrados pro
+    // Railway continuarem funcionando.
+    private const val PANEL_BASE_PRIMARY = "https://renciaappproduction.up.railway.app/api/v5"
+    private const val PANEL_ROOT_PRIMARY = "https://renciaappproduction.up.railway.app"
+    private const val PANEL_BASE_FALLBACK = "https://renciaapp.manus.space/api/v5"
+    private const val PANEL_ROOT_FALLBACK = "https://renciaapp.manus.space"
     private const val TEST_REGISTER_FALLBACK = "https://nuvixtv.sigmab.pro/api/chatbot/Yen129WPEa/XYgD9JWr6V"
 
     data class CheckResult(
@@ -16,22 +26,32 @@ object MacPanelClient {
     )
 
     fun checkMac(mac: String): CheckResult {
-        val endpoint = "$PANEL_BASE/check_mac.php?mac=${encode(mac)}"
+        val primary = checkMacAt(PANEL_BASE_PRIMARY, mac)
+        if (primary != null && primary.session.authorized) return primary
+
+        val fallback = checkMacAt(PANEL_BASE_FALLBACK, mac)
+        if (fallback != null) return fallback
+
+        // Nenhum dos dois respondeu — devolve o que o Railway disse (se
+        // respondeu, mesmo negando) ou uma falha de conexão genérica.
+        return primary ?: CheckResult(
+            MacSessionStore.Session(false, false, mac, null, null, emptyList(), null, null, null, null, null, null, "Falha de conexão."),
+            "",
+        )
+    }
+
+    private fun checkMacAt(base: String, mac: String): CheckResult? {
+        val endpoint = "$base/check_mac.php?mac=${encode(mac)}"
         return runCatching {
             val jsonText = get(endpoint)
             val json = JSONObject(jsonText)
             CheckResult(normalize(json, mac), jsonText)
-        }.getOrElse {
-            CheckResult(
-                MacSessionStore.Session(false, false, mac, null, null, emptyList(), null, null, null, null, null, null, "Falha de conexão."),
-                "",
-            )
-        }
+        }.getOrNull()
     }
 
     fun registerTestDevice(mac: String): Pair<Boolean, String> {
         val registerUrl = runCatching {
-            val guim = get("$PANEL_ROOT/api/guim.php?mac=${encode(mac)}")
+            val guim = guimFor(mac)
             JSONObject(guim).optString("gpcpro_server_url").ifBlank { TEST_REGISTER_FALLBACK }
         }.getOrDefault(TEST_REGISTER_FALLBACK)
         return runCatching {
@@ -53,13 +73,18 @@ object MacPanelClient {
     }
 
     fun fetchExtras(mac: String): Map<String, String> = runCatching {
-        val json = JSONObject(get("$PANEL_ROOT/api/guim.php?mac=${encode(mac)}"))
+        val json = JSONObject(guimFor(mac))
         buildMap {
             listOf("impactPhrase", "lockTitle", "lockMessage", "lockButtonText", "lockButtonUrl", "websiteUrl", "contactInfo", "resellerEmail", "legalNotice").forEach { key ->
                 json.optString(key).ifBlank { null }?.let { put(key, it) }
             }
         }
     }.getOrDefault(emptyMap())
+
+    /** Railway primeiro, cai pro Manus se não responder — mesmo padrão do checkMac. */
+    private fun guimFor(mac: String): String =
+        runCatching { get("$PANEL_ROOT_PRIMARY/api/guim.php?mac=${encode(mac)}") }
+            .getOrElse { get("$PANEL_ROOT_FALLBACK/api/guim.php?mac=${encode(mac)}") }
 
     private fun normalize(json: JSONObject, mac: String): MacSessionStore.Session {
         val registered = json.optBoolean("mac_registered") || json.optBoolean("registered") || json.optInt("registered") == 1 || json.optBoolean("found") || json.optString("status").equals("ativo", true)
