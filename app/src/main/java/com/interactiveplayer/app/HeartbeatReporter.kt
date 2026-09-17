@@ -21,15 +21,14 @@ import kotlinx.coroutines.withContext
  * preso mostrando o último canal que outro app (ou nenhum) tinha
  * reportado pra esse MAC, mesmo trocando de canal aqui dentro.
  *
- * DEBUG_TOAST: temporário — mostra na tela o resultado real de cada
- * tentativa (sucesso/erro, com a mensagem do servidor), porque o
- * heartbeat sempre falha em silêncio de propósito (nunca pode travar a
- * reprodução) e isso estava escondendo o motivo de não funcionar em
- * alguns aparelhos. Desligar (= false) depois de confirmar que funciona.
+ * DEBUG_TOAST: desligado. Serviu pra descobrir que a rota v5 estava
+ * certa e o problema real era MAC divergente entre o painel e o
+ * aparelho — não mais necessário no dia a dia (ligar de novo (= true)
+ * só se precisar depurar algo parecido no futuro).
  */
 object HeartbeatReporter {
     private const val INTERVAL_MS = 30_000L
-    private const val DEBUG_TOAST = true
+    private const val DEBUG_TOAST = false
     private var job: Job? = null
 
     /** Chame de novo (com o novo nome) toda vez que o canal/conteúdo mudar. */
