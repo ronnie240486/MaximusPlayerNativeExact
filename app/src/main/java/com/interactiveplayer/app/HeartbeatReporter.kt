@@ -1,6 +1,7 @@
 package com.interactiveplayer.app
 
 import android.content.Context
+import android.widget.Toast
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -19,24 +20,41 @@ import kotlinx.coroutines.withContext
  * Antes o app nativo não mandava isso NUNCA, então o painel ficava
  * preso mostrando o último canal que outro app (ou nenhum) tinha
  * reportado pra esse MAC, mesmo trocando de canal aqui dentro.
+ *
+ * DEBUG_TOAST: temporário — mostra na tela o resultado real de cada
+ * tentativa (sucesso/erro, com a mensagem do servidor), porque o
+ * heartbeat sempre falha em silêncio de propósito (nunca pode travar a
+ * reprodução) e isso estava escondendo o motivo de não funcionar em
+ * alguns aparelhos. Desligar (= false) depois de confirmar que funciona.
  */
 object HeartbeatReporter {
     private const val INTERVAL_MS = 30_000L
+    private const val DEBUG_TOAST = true
     private var job: Job? = null
 
     /** Chame de novo (com o novo nome) toda vez que o canal/conteúdo mudar. */
     fun start(owner: LifecycleOwner, context: Context, content: String) {
         stop()
         if (content.isBlank()) return
-        val mac = MacSessionStore.load(context)?.mac?.takeIf { it.isNotBlank() } ?: return
+        val appContext = context.applicationContext
+        val mac = MacSessionStore.load(context)?.mac?.takeIf { it.isNotBlank() }
+        if (mac == null) {
+            if (DEBUG_TOAST) toast(appContext, "Heartbeat: sem MAC na sessão, não enviado")
+            return
+        }
         job = owner.lifecycleScope.launch {
             while (isActive) {
-                withContext(Dispatchers.IO) {
-                    runCatching { MacPanelClient.sendHeartbeat(mac, content) }
+                val result = withContext(Dispatchers.IO) {
+                    runCatching { MacPanelClient.sendHeartbeat(mac, content) }.getOrElse { "ERRO: ${it.message ?: it}" }
                 }
+                if (DEBUG_TOAST) toast(appContext, "Heartbeat [$content]: $result")
                 delay(INTERVAL_MS)
             }
         }
+    }
+
+    private fun toast(context: Context, message: String) {
+        runCatching { Toast.makeText(context, message, Toast.LENGTH_LONG).show() }
     }
 
     /** Chame ao sair da tela/parar de tocar, senão continua avisando um canal que não toca mais. */

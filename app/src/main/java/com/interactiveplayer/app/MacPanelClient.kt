@@ -86,16 +86,23 @@ object MacPanelClient {
      * mesmo variando o parâmetro), o que me enganou por um tempo. Testei
      * a rota certa direto no servidor e confirmei `"contentUpdated":true`.
      */
-    fun sendHeartbeat(mac: String, content: String) {
-        if (!heartbeatAt(PANEL_BASE_PRIMARY, mac, content)) {
-            heartbeatAt(PANEL_BASE_FALLBACK, mac, content)
-        }
+    /**
+     * Devolve uma descrição curta do resultado (não só true/false) —
+     * temporário, pra dar pra ver na tela (ver HeartbeatReporter) o que
+     * está realmente acontecendo em vez de falhar 100% em silêncio.
+     */
+    fun sendHeartbeat(mac: String, content: String): String {
+        val (ok, msg) = heartbeatAt(PANEL_BASE_PRIMARY, mac, content)
+        if (ok) return "OK Railway: $msg"
+        val (ok2, msg2) = heartbeatAt(PANEL_BASE_FALLBACK, mac, content)
+        return if (ok2) "OK Manus: $msg2" else "FALHOU — Railway: $msg / Manus: $msg2"
     }
 
-    private fun heartbeatAt(base: String, mac: String, content: String): Boolean = runCatching {
+    private fun heartbeatAt(base: String, mac: String, content: String): Pair<Boolean, String> = runCatching {
         val body = get("$base/heartbeat?mac=${encode(mac)}&current_content=${encode(content)}")
-        JSONObject(body).optBoolean("success", false)
-    }.getOrDefault(false)
+        val ok = JSONObject(body).optBoolean("success", false)
+        ok to body.take(150)
+    }.getOrElse { false to (it.message ?: it.toString()) }
 
     fun fetchExtras(mac: String): Map<String, String> = runCatching {
         val json = JSONObject(guimFor(mac))
