@@ -259,6 +259,7 @@ class MainActivity : ComponentActivity() {
         if (!::homeBody.isInitialized || items.isEmpty()) return
         if (items === lastRenderedCatalog) {
             refreshContinueWatching()
+            refreshMostWatchedChannels()
             return
         }
         lastRenderedCatalog = items
@@ -267,6 +268,7 @@ class MainActivity : ComponentActivity() {
         val series = items.filter { it.kind == M3uItem.Kind.SERIES }
         val channels = items.filter { it.kind == M3uItem.Kind.CHANNEL }
         val history = historyAsItems()
+        val mostWatchedChannels = ChannelWatchStats.mostWatched(this, channels)
 
         homeBody.removeAllViews()
         homeBody.addView(buildHero((movies + series).take(12)))
@@ -275,7 +277,11 @@ class MainActivity : ComponentActivity() {
                 tag = "continue"
             })
         }
-        homeBody.addView(buildSectionRow("CANAIS MAIS ASSISTIDOS", channels.take(20), circular = true))
+        if (mostWatchedChannels.isNotEmpty()) {
+            homeBody.addView(buildSectionRow("CANAIS MAIS ASSISTIDOS", mostWatchedChannels, circular = true).apply {
+                tag = "mostwatched"
+            })
+        }
         homeBody.addView(buildSectionRow("FILMES EM ALTA", movies.take(20), circular = false))
         homeBody.addView(buildSectionRow("SÉRIES POPULARES", series.take(20), circular = false))
     }
@@ -301,6 +307,34 @@ class MainActivity : ComponentActivity() {
                 } else {
                     // Logo depois do hero, que é sempre o primeiro filho.
                     homeBody.addView(row, minOf(1, homeBody.childCount))
+                }
+            }
+        }
+    }
+
+    /** Substitui só a faixa "Canais mais assistidos" no lugar, sem tocar no resto. */
+    private fun refreshMostWatchedChannels() {
+        val catalog = lastRenderedCatalog ?: return
+        val channels = catalog.filter { it.kind == M3uItem.Kind.CHANNEL }
+        val mostWatchedChannels = ChannelWatchStats.mostWatched(this, channels)
+        val existingIndex = (0 until homeBody.childCount).firstOrNull {
+            homeBody.getChildAt(it).tag == "mostwatched"
+        }
+        when {
+            mostWatchedChannels.isEmpty() && existingIndex != null -> homeBody.removeViewAt(existingIndex)
+            mostWatchedChannels.isNotEmpty() -> {
+                val row = buildSectionRow("CANAIS MAIS ASSISTIDOS", mostWatchedChannels, circular = true).apply {
+                    tag = "mostwatched"
+                }
+                if (existingIndex != null) {
+                    homeBody.removeViewAt(existingIndex)
+                    homeBody.addView(row, existingIndex)
+                } else {
+                    // Logo depois de "Continue assistindo" (se tiver) ou do hero.
+                    val afterContinue = (0 until homeBody.childCount).firstOrNull {
+                        homeBody.getChildAt(it).tag == "continue"
+                    }
+                    homeBody.addView(row, minOf((afterContinue ?: 0) + 1, homeBody.childCount))
                 }
             }
         }
@@ -958,6 +992,7 @@ class MainActivity : ComponentActivity() {
 
     private fun openItem(item: M3uItem) {
         WatchHistoryStore.record(this, item)
+        ChannelWatchStats.record(this, item)
         if (item.kind == M3uItem.Kind.CHANNEL) {
             startActivity(Intent(this, ChannelsActivity::class.java).putExtra("focusUrl", item.url))
         } else {
