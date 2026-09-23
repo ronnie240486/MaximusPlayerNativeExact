@@ -497,6 +497,7 @@ class ChannelsActivity : ComponentActivity() {
 
     private fun openFullscreen(item: M3uItem) {
         WatchHistoryStore.record(this, item)
+        ChannelWatchStats.record(this, item)
         // Solta a PlayerView desta tela antes de ir — sem isso, ao
         // voltar, o Media3 acha que ela "já tem" o player atribuído e
         // não reatribui de verdade (tela preta).
