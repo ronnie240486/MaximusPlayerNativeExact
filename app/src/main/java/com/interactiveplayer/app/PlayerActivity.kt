@@ -311,6 +311,7 @@ class PlayerActivity : ComponentActivity() {
             }
         }
         WatchHistoryStore.record(this, chosen)
+        ChannelWatchStats.record(this, chosen)
         startPlayback(mediaUrl)
         loadLiveEpg()
     }
