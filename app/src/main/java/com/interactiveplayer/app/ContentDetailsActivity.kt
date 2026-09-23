@@ -343,6 +343,7 @@ class ContentDetailsActivity : ComponentActivity() {
             item.url
         }
         WatchHistoryStore.record(this, item)
+        ChannelWatchStats.record(this, item)
         startActivity(
             android.content.Intent(this, PlayerActivity::class.java)
                 .putExtra("url", url)
@@ -403,6 +404,7 @@ class ContentDetailsActivity : ComponentActivity() {
 
     private fun openPlayer() {
         WatchHistoryStore.record(this, item)
+        ChannelWatchStats.record(this, item)
         // Pra série, a URL da série em si geralmente não funciona nos
         // painéis Xtream — cada EPISÓDIO tem seu próprio stream. ASSISTIR
         // aqui toca o primeiro episódio disponível; se ainda não
