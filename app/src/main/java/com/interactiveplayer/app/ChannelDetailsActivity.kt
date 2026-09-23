@@ -583,6 +583,7 @@ class ChannelDetailsActivity : ComponentActivity() {
         epgStatus.setText("Carregando programação...")
         loadEpg()
         WatchHistoryStore.record(this, chosen)
+        ChannelWatchStats.record(this, chosen)
     }
 
     override fun onResume() {
@@ -604,6 +605,7 @@ class ChannelDetailsActivity : ComponentActivity() {
             }
         }
         WatchHistoryStore.record(this, item)
+        ChannelWatchStats.record(this, item)
         // Reanexa a MESMA instância — se a pessoa voltou da tela cheia,
         // o canal continua tocando exatamente de onde estava, sem
         // reiniciar. Só recria de verdade se a URL mudou por fora.
