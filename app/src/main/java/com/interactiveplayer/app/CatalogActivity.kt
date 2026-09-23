@@ -361,6 +361,7 @@ class CatalogActivity : ComponentActivity() {
 
     private fun openItem(item: M3uItem) {
         WatchHistoryStore.record(this, item)
+        ChannelWatchStats.record(this, item)
         if (item.kind == M3uItem.Kind.CHANNEL) {
             startActivity(Intent(this, ChannelDetailsActivity::class.java).apply {
                 putExtra("name", item.name)
