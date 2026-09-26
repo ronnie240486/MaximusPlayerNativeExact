@@ -1,17 +1,21 @@
 package com.interactiveplayer.app
 
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.InputType
 import android.view.Gravity
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -120,7 +124,7 @@ class MacLoginActivity : ComponentActivity() {
         }
         root.addView(progress, LinearLayout.LayoutParams(dp(42), dp(42)))
         val buttons = LinearLayout(this).apply { gravity = Gravity.CENTER; setPadding(0, dp(16), 0, 0) }
-        testButton = button("TESTE") { requestTest() }
+        testButton = button("TESTE") { showTestLeadDialog() }
         checkButton = button("VERIFICAR AGORA") { checkNow(true) }
         buttons.addView(testButton, buttonParams())
         buttons.addView(checkButton, buttonParams())
@@ -178,12 +182,60 @@ class MacLoginActivity : ComponentActivity() {
         }
     }
 
-    private fun requestTest() {
+    /**
+     * BUG corrigido: o botão "TESTE" chamava só a API do Servidor (provedor
+     * externo) pra pegar uma conta pronta -- o teste funcionava (o cliente
+     * via canais/filmes), mas ninguém era cadastrado no NOSSO painel, então
+     * o revendedor nunca via esse lead no dashboard. Agora, antes de gerar o
+     * teste de verdade, pede nome + WhatsApp e registra isso no nosso painel
+     * (ver MacPanelClient.reportTestLead) -- sem atrasar nem travar o teste
+     * se esse cadastro falhar.
+     */
+    private fun showTestLeadDialog() {
+        if (checking || mac.isBlank()) return
+        val nameInput = EditText(this).apply {
+            hint = "Seu nome"
+            setSingleLine(true)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PERSON_NAME
+        }
+        val phoneInput = EditText(this).apply {
+            hint = "WhatsApp (DDD + número)"
+            setSingleLine(true)
+            inputType = InputType.TYPE_CLASS_PHONE
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(8), dp(24), 0)
+            addView(nameInput)
+            addView(phoneInput)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Seu teste aqui")
+            .setMessage("Informe seu nome e WhatsApp pra gerar o teste no painel.")
+            .setView(container)
+            .setPositiveButton("Gerar teste") { _, _ ->
+                val name = nameInput.text.toString().trim()
+                val phone = phoneInput.text.toString().trim()
+                if (name.isBlank() || phone.isBlank()) {
+                    Toast.makeText(this, "Preencha nome e WhatsApp pra gerar o teste", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                requestTest(name, phone)
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun requestTest(name: String, phone: String) {
         if (checking || mac.isBlank()) return
         checking = true
         progress.visibility = android.view.View.VISIBLE
         status.text = "SOLICITANDO TESTE..."
         lifecycleScope.launch {
+            // Best-effort e sem esperar: registra o lead no nosso painel em
+            // paralelo, sem atrasar nem travar o teste de verdade (que fala
+            // com a API do Servidor externa, abaixo) se isso falhar.
+            launch(Dispatchers.IO) { runCatching { MacPanelClient.reportTestLead(mac, name, phone) } }
             val result = withContext(Dispatchers.IO) { MacPanelClient.registerTestDevice(mac) }
             if (!result.first) {
                 checking = false

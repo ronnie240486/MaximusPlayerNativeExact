@@ -49,6 +49,42 @@ object MacPanelClient {
         }.getOrNull()
     }
 
+    /**
+     * Registra no NOSSO painel (rencia_app, rota /api/v5/maximus-test-result)
+     * o lead do teste -- MAC + nome + telefone do cliente. Sem isso, o botão
+     * "TESTE" só falava com a API do Servidor (registerTestDevice abaixo,
+     * provedor externo tipo painelepic.lat) pra conseguir uma conta pronta:
+     * o teste funcionava e o cliente via o conteúdo, mas ele nunca aparecia
+     * cadastrado no painel/dashboard do revendedor. Railway primeiro, cai pro
+     * Manus se não responder -- mesmo padrão de checkMac/sendHeartbeat.
+     * Best-effort: chamado sem esperar o resultado (ver requestTest em
+     * MacLoginActivity) -- nunca deve atrasar nem travar o teste de verdade
+     * se o nosso painel estiver fora do ar.
+     */
+    fun reportTestLead(mac: String, name: String, phone: String) {
+        val ok = runCatching { reportTestLeadAt(PANEL_ROOT_PRIMARY, mac, name, phone) }.isSuccess
+        if (!ok) runCatching { reportTestLeadAt(PANEL_ROOT_FALLBACK, mac, name, phone) }
+    }
+
+    private fun reportTestLeadAt(root: String, mac: String, name: String, phone: String) {
+        val connection = (URL("$root/api/v5/maximus-test-result").openConnection() as HttpURLConnection).apply {
+            connectTimeout = 8000
+            readTimeout = 10000
+            requestMethod = "POST"
+            doOutput = true
+            setRequestProperty("Accept", "application/json, text/plain, */*")
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("User-Agent", USER_AGENT)
+        }
+        connection.outputStream.use {
+            it.write(JSONObject().put("mac", mac).put("name", name).put("phone", phone).toString().toByteArray())
+        }
+        val code = connection.responseCode
+        (if (code in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }
+        connection.disconnect()
+        if (code !in 200..299) error("HTTP $code")
+    }
+
     fun registerTestDevice(mac: String): Pair<Boolean, String> {
         val registerUrl = runCatching {
             val guim = guimFor(mac)
