@@ -3,6 +3,7 @@ package com.interactiveplayer.app
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -656,7 +657,23 @@ private class ChannelListAdapter(
             refreshHeart()
             true
         }
-        holder.row.setOnFocusChangeListener { _, focused -> if (focused) onFocusPeek(item) }
+        // BUG corrigido: onCreateViewHolder já chama row.wireFocusHighlight()
+        // (Theme.kt), que registra um setOnFocusChangeListener pra desenhar a
+        // borda cyan quando o item ganha foco no D-pad. Só que
+        // onBindViewHolder roda de novo a cada bind/reciclagem de linha (bem
+        // mais vezes que onCreateViewHolder) e SUBSTITUÍA esse listener por
+        // este aqui, que só chama onFocusPeek -- Android só guarda UM
+        // listener de foco por view, o segundo apaga o primeiro. Resultado:
+        // a borda nunca trocava de cor, então dava pra navegar a lista sem
+        // nenhuma pista visual de qual canal estava focado (diferente da
+        // coluna de categorias ao lado, que não tem esse re-bind). Agora o
+        // mesmo listener faz as duas coisas: recoloca a borda E chama
+        // onFocusPeek, reaproveitando o MESMO GradientDrawable que
+        // wireFocusHighlight() já deixou em row.foreground.
+        holder.row.setOnFocusChangeListener { _, focused ->
+            (holder.row.foreground as? GradientDrawable)?.setStroke(holder.row.context.dp(2), if (focused) Theme.accentCyan else Color.TRANSPARENT)
+            if (focused) onFocusPeek(item)
+        }
     }
 
     class Holder(val row: LinearLayout) : RecyclerView.ViewHolder(row) {
