@@ -36,7 +36,7 @@ object M3uParser {
         // centenas de GRUPOS. Decidir "esse grupo é Kids?" uma vez por grupo
         // (e não uma vez por item, com ~50 buscas de texto cada) é o que
         // mais tira tempo de processamento numa TV box fraca.
-        class GroupInfo(val name: String, val kids: Boolean)
+        class GroupInfo(val name: String, val kids: Boolean, val adult: Boolean)
         val groups = HashMap<String, GroupInfo>()
         while (true) {
             val line = (reader.readLine() ?: break).trim()
@@ -59,9 +59,17 @@ object M3uParser {
                     // Um único String por grupo (em vez de uma cópia por item,
                     // 200 mil vezes) -- economiza bastante memória.
                     val info2 = groups.getOrPut(rawGroup) {
-                        GroupInfo(rawGroup, KidsContent.matches(rawGroup) && !AdultContent.isAdultGroup(rawGroup))
+                        val adult = AdultContent.isAdultGroup(rawGroup)
+                        GroupInfo(rawGroup, !adult && KidsContent.matches(rawGroup), adult)
                     }
-                    result += M3uItem(name, info2.name, logo, url, classify(name, info2.name, info2.kids), streamIdFromUrl(url))
+                    // Conteúdo adulto (pelo grupo ou pelo nome) nunca entra no
+                    // catálogo: some da Home, Filmes, Séries, Canais, Busca, Kids...
+                    if (info2.adult || AdultContent.isAdultName(name)) {
+                        info = null
+                        continue
+                    }
+                    val urlData = urlInfo(url)
+                    result += M3uItem(name, info2.name, logo, url, classify(name, info2.name, info2.kids, urlData.kindSegment), urlData.streamId)
                     if (onProgress != null && result.size % 2000 == 0) onProgress(result.size)
                     info = null
                 }
@@ -85,40 +93,53 @@ object M3uParser {
         if (value.indexOf('%') < 0 && value.indexOf('+') < 0) value
         else runCatching { URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)
 
+    /** Tipo (live/movie/series) e ID numérico lidos do caminho da URL. */
+    private class UrlInfo(val kindSegment: String?, val streamId: String?)
+
+    private val noUrlInfo = UrlInfo(null, null)
+
     /**
      * Exportação M3U do Xtream normalmente segue o padrão
      * `.../live|movie|series/usuario/senha/12345.ext` — o mesmo formato
-     * que a API JSON usa. Extrai esse ID pra viabilizar EPG e sinopse
-     * mesmo quando a lista chegou como M3U puro, não como catálogo
-     * Xtream — que é o caminho mais comum na prática.
+     * que a API JSON usa. Dali saem o ID (EPG e sinopse) e, principalmente,
+     * o TIPO REAL do item: `live` = canal, `movie` = filme, `series` = série.
+     * Antes o tipo era adivinhado por palavras no nome ("filme", "ação"...),
+     * o que misturava novelas em Filmes e filmes em Canais.
      */
-    private fun streamIdFromUrl(url: String): String? {
+    private fun urlInfo(url: String): UrlInfo {
         // Pega só o caminho da URL na mão (sem java.net.URI, que é lento e
         // era chamado uma vez por item -- dezenas de milhares de vezes).
         val schemeEnd = url.indexOf("://")
         val pathStart = url.indexOf('/', if (schemeEnd >= 0) schemeEnd + 3 else 0)
-        if (pathStart < 0) return null
+        if (pathStart < 0) return noUrlInfo
         var pathEnd = url.length
         val query = url.indexOf('?', pathStart)
         if (query in 0 until pathEnd) pathEnd = query
         val fragment = url.indexOf('#', pathStart)
         if (fragment in 0 until pathEnd) pathEnd = fragment
         val segments = url.substring(pathStart, pathEnd).trim('/').split('/')
-        if (segments.size < 4) return null
+        if (segments.size < 4) return noUrlInfo
         val kind = segments[segments.size - 4]
-        if (kind != "live" && kind != "movie" && kind != "series") return null
+        if (kind != "live" && kind != "movie" && kind != "series") return noUrlInfo
         val id = segments.last().substringBeforeLast('.')
-        return id.takeIf { it.isNotBlank() && it.all { ch -> ch.isDigit() } }
+        return UrlInfo(kind, id.takeIf { it.isNotBlank() && it.all { ch -> ch.isDigit() } })
     }
 
     private val seriesWords = arrayOf("série", "series", "temporada", "season")
     private val movieWords = arrayOf("filme", "movie", "cinema", "netflix", "amazon prime", "ação", "suspense")
 
-    private fun classify(name: String, group: String, kidsGroup: Boolean): M3uItem.Kind {
+    private fun classify(name: String, group: String, kidsGroup: Boolean, urlKind: String?): M3uItem.Kind {
         // Só o nome da CATEGORIA decide Kids — um filme cujo nome
         // tenha "família" não pode arrastar uma categoria genérica
         // (tipo "STAR+" ou "TOP 10") pra dentro do Kids inteira.
         if (kidsGroup) return M3uItem.Kind.KIDS
+        // O tipo que vem na URL (live/movie/series) manda; só quando a URL não
+        // tem esse padrão é que cai na adivinhação por palavras abaixo.
+        when (urlKind) {
+            "live" -> return M3uItem.Kind.CHANNEL
+            "movie" -> return M3uItem.Kind.MOVIE
+            "series" -> return M3uItem.Kind.SERIES
+        }
         val value = "$name $group".lowercase()
         return when {
             seriesWords.any { value.contains(it) } -> M3uItem.Kind.SERIES

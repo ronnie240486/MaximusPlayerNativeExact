@@ -8,8 +8,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
@@ -29,7 +27,7 @@ object CatalogRepository {
     // _v5: o cache saiu do SharedPreferences (texto gigante na memória,
     // estourava em TV box fraca) e virou arquivo gravado em streaming.
     // Quem já tinha o app instalado busca a lista de novo uma vez.
-    private const val CACHE_FILE = "catalog_cache_v6.txt"
+    private const val CACHE_FILE = "catalog_cache_v8.txt"
 
     @Volatile private var cached: List<M3uItem> = emptyList()
     @Volatile var lastMessage: String = ""
@@ -126,17 +124,25 @@ object CatalogRepository {
         // certo em mãos.
         extractAndSaveCredentials(context, playlist.url)
 
+        // O catálogo Xtream (live / filmes / séries) vem do painel JÁ separado por
+        // tipo; o M3U não: o app tinha que ADIVINHAR filme, série e canal por palavras
+        // no nome ("filme", "ação"...), e misturava tudo (novelas em Filmes, filmes em
+        // Canais, episódios soltos em Séries). Por isso o Xtream vai primeiro; o M3U
+        // fica de reserva para lista que não tem usuário/senha ou cujo painel não
+        // responde à API.
+        progressText = "Baixando o catálogo do painel…"
+        val xtream = fetchXtreamParallel(context, playlist.url)
+        if (xtream.isNotEmpty()) {
+            CrashLog.mark(context, "3 catálogo Xtream lido (${xtream.size} itens)")
+            lastMessage = "Catálogo Xtream carregado pelo painel."
+            return xtream
+        }
+        progressText = "Catálogo Xtream indisponível — lendo a lista M3U…"
         val direct = fetchM3u(playlist.url)
         if (direct.isNotEmpty()) {
             CrashLog.mark(context, "3 lista M3U lida (${direct.size} itens)")
             lastMessage = "Playlist M3U carregada."
             return direct
-        }
-        progressText = "Lista M3U vazia — tentando o catálogo Xtream…"
-        val xtream = fetchXtreamParallel(context, playlist.url)
-        if (xtream.isNotEmpty()) {
-            lastMessage = "Catálogo Xtream carregado pelo painel."
-            return xtream
         }
         lastMessage = "A playlist devolvida pelo painel não respondeu como M3U/Xtream."
         return emptyList()
@@ -202,9 +208,8 @@ object CatalogRepository {
 
     /**
      * As 6 chamadas (3 categorias + 3 listas) rodam TODAS ao mesmo tempo
-     * em vez de uma atrás da outra — antes isso somava até 6x o tempo de
-     * espera de cada chamada individual, e era a causa real da Home
-     * demorar tanto pra aparecer.
+     * em vez de uma atrás da outra. Cada resposta é lida em streaming, item por
+     * item (XtreamStreamParser), sem guardar o JSON inteiro na memória.
      */
     private fun fetchXtreamParallel(context: Context, playlistUrl: String): List<M3uItem> = runCatching {
         val parsed = URL(playlistUrl)
@@ -220,90 +225,71 @@ object CatalogRepository {
         // adivinhar de volta a partir da URL de cada item.
         XtreamCredentials.save(context, server, username, password)
 
+        val counter = java.util.concurrent.atomic.AtomicInteger(0)
+        val startedAt = System.currentTimeMillis()
+        val onItem = {
+            val n = counter.incrementAndGet()
+            if (n % 2000 == 0) {
+                val seconds = (System.currentTimeMillis() - startedAt) / 1000
+                progressText = "Lendo o catálogo: $n itens (${seconds}s)…"
+            }
+        }
+        fun endpoint(action: String) =
+            "$server/player_api.php?username=${encode(username)}&password=${encode(password)}&action=$action"
+
         kotlinx.coroutines.runBlocking {
             coroutineScope {
-                val liveCategoriesDeferred = async(Dispatchers.IO) { categories(server, username, password, "get_live_categories") }
-                val vodCategoriesDeferred = async(Dispatchers.IO) { categories(server, username, password, "get_vod_categories") }
-                val seriesCategoriesDeferred = async(Dispatchers.IO) { categories(server, username, password, "get_series_categories") }
-                val liveDeferred = async(Dispatchers.IO) { jsonArray(server, username, password, "get_live_streams") }
-                val moviesDeferred = async(Dispatchers.IO) { jsonArray(server, username, password, "get_vod_streams") }
-                val seriesDeferred = async(Dispatchers.IO) { jsonArray(server, username, password, "get_series") }
+                val liveCats = async(Dispatchers.IO) { readJson(endpoint("get_live_categories"), 20000) { XtreamStreamParser.categories(it) } ?: emptyMap() }
+                val vodCats = async(Dispatchers.IO) { readJson(endpoint("get_vod_categories"), 20000) { XtreamStreamParser.categories(it) } ?: emptyMap() }
+                val seriesCats = async(Dispatchers.IO) { readJson(endpoint("get_series_categories"), 20000) { XtreamStreamParser.categories(it) } ?: emptyMap() }
 
-                val liveCategories = liveCategoriesDeferred.await()
-                val vodCategories = vodCategoriesDeferred.await()
-                val seriesCategories = seriesCategoriesDeferred.await()
-                val live = liveDeferred.await()
-                val movies = moviesDeferred.await()
-                val series = seriesDeferred.await()
+                val live = async(Dispatchers.IO) {
+                    val cats = liveCats.await()
+                    readJson(endpoint("get_live_streams"), 30000) { reader ->
+                        ArrayList<M3uItem>().also { XtreamStreamParser.live(reader, cats, server, username, password, it, onItem) }
+                    } ?: emptyList<M3uItem>()
+                }
+                val movies = async(Dispatchers.IO) {
+                    val cats = vodCats.await()
+                    readJson(endpoint("get_vod_streams"), 30000) { reader ->
+                        ArrayList<M3uItem>().also { XtreamStreamParser.movies(reader, cats, server, username, password, it, onItem) }
+                    } ?: emptyList<M3uItem>()
+                }
+                val series = async(Dispatchers.IO) {
+                    val cats = seriesCats.await()
+                    readJson(endpoint("get_series"), 30000) { reader ->
+                        ArrayList<M3uItem>().also { XtreamStreamParser.series(reader, cats, server, username, password, it, onItem) }
+                    } ?: emptyList<M3uItem>()
+                }
 
                 val result = ArrayList<M3uItem>()
-                for (index in 0 until live.length()) {
-                    val item = live.optJSONObject(index) ?: continue
-                    val name = item.optString("name").ifBlank { "Canal" }
-                    val group = liveCategories[item.optString("category_id")] ?: "Canais"
-                    val streamId = item.optString("stream_id")
-                    val url = item.optString("direct_source").ifBlank { "$server/live/$username/$password/$streamId.ts" }
-                    if (streamId.isNotBlank()) result += M3uItem(name, group, item.optString("stream_icon").ifBlank { null }, url, M3uItem.Kind.CHANNEL, streamId)
-                }
-                for (index in 0 until movies.length()) {
-                    val item = movies.optJSONObject(index) ?: continue
-                    val name = item.optString("name").ifBlank { "Filme" }
-                    val group = vodCategories[item.optString("category_id")] ?: "Filmes"
-                    val streamId = item.optString("stream_id")
-                    val ext = item.optString("container_extension").ifBlank { "mp4" }
-                    if (streamId.isNotBlank()) result += M3uItem(name, group, item.optString("stream_icon").ifBlank { null }, "$server/movie/$username/$password/$streamId.$ext", classifyMovie(name, group), streamId)
-                }
-                for (index in 0 until series.length()) {
-                    val item = series.optJSONObject(index) ?: continue
-                    val name = item.optString("name").ifBlank { "Série" }
-                    val group = seriesCategories[item.optString("category_id")] ?: "Séries"
-                    val seriesId = item.optString("series_id")
-                    if (seriesId.isNotBlank()) result += M3uItem(name, group, item.optString("cover").ifBlank { null }, "$server/series/$username/$password/$seriesId.mp4", classifySeries(name, group), seriesId)
-                }
-                result
+                result.addAll(live.await())
+                result.addAll(movies.await())
+                result.addAll(series.await())
+                result as List<M3uItem>
             }
         }
     }.getOrDefault(emptyList())
 
-    private fun classifyMovie(name: String, group: String): M3uItem.Kind =
-        if (KidsContent.matches(group) && !AdultContent.isAdultGroup(group)) M3uItem.Kind.KIDS else M3uItem.Kind.MOVIE
-
-    private fun classifySeries(name: String, group: String): M3uItem.Kind =
-        if (KidsContent.matches(group) && !AdultContent.isAdultGroup(group)) M3uItem.Kind.KIDS else M3uItem.Kind.SERIES
-
-    private fun categories(server: String, username: String, password: String, action: String): Map<String, String> {
-        val json = jsonArray(server, username, password, action)
-        return buildMap {
-            for (index in 0 until json.length()) {
-                val item = json.optJSONObject(index) ?: continue
-                val id = item.optString("category_id")
-                val name = item.optString("category_name")
-                if (id.isNotBlank() && name.isNotBlank()) put(id, name)
-            }
-        }
-    }
-
-    private fun jsonArray(server: String, username: String, password: String, action: String): JSONArray {
-        val endpoint = "$server/player_api.php?username=${encode(username)}&password=${encode(password)}&action=$action"
-        // get_vod_streams em particular pode ter uma resposta enorme
-        // (milhares de títulos) — um timeout único e sem nova tentativa
-        // fazia "Filmes" ficar vazio sozinho quando só essa chamada
-        // engasgava, mesmo com canais e séries carregando bem.
-        repeat(2) { attempt ->
-            val body = runCatching {
-                val connection = open(endpoint, 20000)
-                val code = connection.responseCode
-                val text = (if (code in 200..299) connection.inputStream else connection.errorStream)
-                    ?.bufferedReader()?.use { it.readText() }.orEmpty()
-                connection.disconnect()
-                if (code !in 200..299 || text.isBlank()) null else text
+    /**
+     * Abre o endpoint e entrega o JSON ao [block] em streaming. Tenta 2 vezes
+     * (get_vod_streams é enorme e às vezes engasga só nessa chamada); devolve
+     * null se as duas falharem ou se a resposta não for o JSON esperado.
+     */
+    private fun <T> readJson(endpoint: String, timeout: Int, block: (android.util.JsonReader) -> T): T? {
+        repeat(2) {
+            val result = runCatching {
+                val connection = open(endpoint, timeout)
+                try {
+                    if (connection.responseCode !in 200..299) null
+                    else android.util.JsonReader(connection.inputStream.bufferedReader()).use { block(it) }
+                } finally {
+                    connection.disconnect()
+                }
             }.getOrNull()
-            if (body != null) {
-                val parsed = runCatching { JSONArray(body) }.getOrNull()
-                if (parsed != null) return parsed
-            }
+            if (result != null) return result
         }
-        return JSONArray()
+        return null
     }
 
     private fun open(url: String, timeout: Int): HttpURLConnection = (URL(url).openConnection() as HttpURLConnection).apply {
