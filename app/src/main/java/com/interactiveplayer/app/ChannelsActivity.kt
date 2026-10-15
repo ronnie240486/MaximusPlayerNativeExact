@@ -468,7 +468,11 @@ class ChannelsActivity : ComponentActivity() {
             val programs = withContext(Dispatchers.IO) { EpgClient.fetchSchedule(this@ChannelsActivity, item) }
             if (latestEpgRequestUrl != requestedFor) return@launch
             if (programs.isEmpty()) {
-                epgStatus.setText("Sem informações de programação para este canal.")
+                val reason = EpgClient.lastError
+                epgStatus.setText(
+                    "Sem informações de programação para este canal." +
+                        if (reason.isNotBlank()) "\n($reason)" else ""
+                )
                 return@launch
             }
             epgStatus.visibility = View.GONE

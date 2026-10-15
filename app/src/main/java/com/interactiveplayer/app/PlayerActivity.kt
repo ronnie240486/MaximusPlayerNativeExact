@@ -440,7 +440,11 @@ class PlayerActivity : ComponentActivity() {
             val programs = withContext(Dispatchers.IO) { EpgClient.fetchSchedule(this@PlayerActivity, item) }
             epgStrip.removeAllViews()
             if (programs.isEmpty()) {
-                epgSummary.setText("Sem informações de programação para este canal.")
+                val reason = EpgClient.lastError
+                epgSummary.setText(
+                    "Sem informações de programação para este canal." +
+                        if (reason.isNotBlank()) "\n($reason)" else ""
+                )
                 return@launch
             }
             val nowIndex = programs.indexOfFirst { it.isNow }

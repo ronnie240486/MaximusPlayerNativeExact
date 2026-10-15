@@ -266,7 +266,6 @@ class MainActivity : ComponentActivity() {
     private fun renderCatalogHome(items: List<M3uItem>) {
         if (!::homeBody.isInitialized || items.isEmpty()) return
         if (items === lastRenderedCatalog) {
-            refreshContinueWatching()
             refreshMostWatchedChannels()
             return
         }
@@ -275,16 +274,10 @@ class MainActivity : ComponentActivity() {
         val movies = items.filter { it.kind == M3uItem.Kind.MOVIE }
         val series = items.filter { it.kind == M3uItem.Kind.SERIES }
         val channels = items.filter { it.kind == M3uItem.Kind.CHANNEL }
-        val history = historyAsItems()
         val mostWatchedChannels = ChannelWatchStats.mostWatched(this, channels)
 
         homeBody.removeAllViews()
         homeBody.addView(buildHero((movies + series).take(12)))
-        if (history.isNotEmpty()) {
-            homeBody.addView(buildSectionRow("CONTINUE ASSISTINDO", history, circular = false).apply {
-                tag = "continue"
-            })
-        }
         if (mostWatchedChannels.isNotEmpty()) {
             homeBody.addView(buildSectionRow("CANAIS MAIS ASSISTIDOS", mostWatchedChannels, circular = true).apply {
                 tag = "mostwatched"
@@ -292,32 +285,6 @@ class MainActivity : ComponentActivity() {
         }
         homeBody.addView(buildSectionRow("FILMES EM ALTA", movies.take(20), circular = false))
         homeBody.addView(buildSectionRow("SÉRIES POPULARES", series.take(20), circular = false))
-    }
-
-    private fun historyAsItems(): List<M3uItem> =
-        WatchHistoryStore.list(this).map { M3uItem(it.name, it.group, it.logo, it.url, it.kind, it.streamId) }
-
-    /** Substitui só a faixa "Continue assistindo" no lugar, sem tocar no resto. */
-    private fun refreshContinueWatching() {
-        val history = historyAsItems()
-        val existingIndex = (0 until homeBody.childCount).firstOrNull {
-            homeBody.getChildAt(it).tag == "continue"
-        }
-        when {
-            history.isEmpty() && existingIndex != null -> homeBody.removeViewAt(existingIndex)
-            history.isNotEmpty() -> {
-                val row = buildSectionRow("CONTINUE ASSISTINDO", history, circular = false).apply {
-                    tag = "continue"
-                }
-                if (existingIndex != null) {
-                    homeBody.removeViewAt(existingIndex)
-                    homeBody.addView(row, existingIndex)
-                } else {
-                    // Logo depois do hero, que é sempre o primeiro filho.
-                    homeBody.addView(row, minOf(1, homeBody.childCount))
-                }
-            }
-        }
     }
 
     /** Substitui só a faixa "Canais mais assistidos" no lugar, sem tocar no resto. */
@@ -338,11 +305,8 @@ class MainActivity : ComponentActivity() {
                     homeBody.removeViewAt(existingIndex)
                     homeBody.addView(row, existingIndex)
                 } else {
-                    // Logo depois de "Continue assistindo" (se tiver) ou do hero.
-                    val afterContinue = (0 until homeBody.childCount).firstOrNull {
-                        homeBody.getChildAt(it).tag == "continue"
-                    }
-                    homeBody.addView(row, minOf((afterContinue ?: 0) + 1, homeBody.childCount))
+                    // Logo depois do hero (a faixa "Continue assistindo" foi removida da Home).
+                    homeBody.addView(row, minOf(1, homeBody.childCount))
                 }
             }
         }

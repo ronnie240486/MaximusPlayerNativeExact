@@ -31,29 +31,44 @@ object EpgClient {
     // que a linha dele volta a ficar visível ao rolar a lista.
     private val nowTitleCache = HashMap<String, String?>()
 
+    // Motivo da última falha, mostrado na tela quando não há programação -- numa
+    // TV box sem cabo/logcat é a única forma de saber se foi rede, painel ou dado.
+    @Volatile var lastError: String = ""
+        private set
+
     /** Deve ser chamado fora da thread principal. "Agora tocando" de um canal, para listas grandes (com cache). */
     fun fetchNowTitle(context: Context, item: M3uItem): String? {
         val streamId = item.streamId ?: return null
         if (nowTitleCache.containsKey(streamId)) return nowTitleCache[streamId]
-        val now = fetchSchedule(context, item, limit = 2).firstOrNull { it.isNow }?.title
+        // Só guarda no cache quando o painel REALMENTE respondeu. Antes, uma falha de
+        // rede (timeout) também era guardada como "sem programação" e nunca mais
+        // tentava de novo naquele canal até fechar o app.
+        val schedule = fetchScheduleOrNull(context, item, limit = 2) ?: return null
+        val now = schedule.firstOrNull { it.isNow }?.title
         nowTitleCache[streamId] = now
         return now
     }
 
     /** Deve ser chamado fora da thread principal. */
-    fun fetchSchedule(context: Context, item: M3uItem, limit: Int = 6): List<Program> {
-        val streamId = item.streamId ?: return emptyList()
-        val credentials = XtreamCredentials.load(context) ?: return emptyList()
+    fun fetchSchedule(context: Context, item: M3uItem, limit: Int = 6): List<Program> =
+        fetchScheduleOrNull(context, item, limit) ?: emptyList()
+
+    /** null = falhou (rede/painel); lista vazia = o painel respondeu mas o canal não tem guia. */
+    private fun fetchScheduleOrNull(context: Context, item: M3uItem, limit: Int): List<Program>? {
+        val streamId = item.streamId
+        if (streamId == null) { lastError = "canal sem ID de stream"; return null }
+        val credentials = XtreamCredentials.load(context)
+        if (credentials == null) { lastError = "sem usuário/senha salvos do painel"; return null }
 
         val endpoint = "${credentials.server}/player_api.php" +
             "?username=${encode(credentials.username)}" +
             "&password=${encode(credentials.password)}" +
             "&action=get_short_epg&stream_id=$streamId&limit=$limit"
 
-        val body = readText(endpoint) ?: return emptyList()
+        val body = readText(endpoint) ?: return null
         return runCatching {
             val root = JSONObject(body)
-            val listings = root.optJSONArray("epg_listings") ?: return@runCatching emptyList()
+            val listings = root.optJSONArray("epg_listings") ?: return@runCatching emptyList<Program>()
             val now = System.currentTimeMillis() / 1000
             buildList {
                 for (index in 0 until listings.length()) {
@@ -74,7 +89,7 @@ object EpgClient {
                     )
                 }
             }
-        }.getOrDefault(emptyList())
+        }.getOrElse { lastError = "resposta do painel ilegível (${it.javaClass.simpleName})"; null }
     }
 
     private fun decodeBase64(value: String): String = runCatching {
@@ -90,11 +105,30 @@ object EpgClient {
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 
-    private fun readText(url: String): String? = runCatching {
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.connectTimeout = 5000
-        connection.readTimeout = 6000
-        if (connection.responseCode !in 200..299) return@runCatching null
-        connection.inputStream.bufferedReader().use { it.readText() }
-    }.getOrNull()
+    // Antes: 5s para conectar e 6s para ler, sem nova tentativa. Numa TV box lenta (CPU
+    // ocupada com a lista e as imagens) isso estourava e a tela dizia "sem
+    // programação". Agora espera mais e tenta 2 vezes.
+    private fun readText(url: String): String? {
+        repeat(2) {
+            val result = runCatching {
+                val connection = URL(url).openConnection() as HttpURLConnection
+                try {
+                    connection.connectTimeout = 10000
+                    connection.readTimeout = 15000
+                    connection.setRequestProperty("User-Agent", "VLC/3.5.5 (Linux;Android 12) LibVLC/3.5.5")
+                    val code = connection.responseCode
+                    if (code !in 200..299) {
+                        lastError = "painel respondeu HTTP $code"
+                        null
+                    } else {
+                        connection.inputStream.bufferedReader().use { it.readText() }
+                    }
+                } finally {
+                    connection.disconnect()
+                }
+            }.onFailure { lastError = "falha de rede (${it.javaClass.simpleName})" }.getOrNull()
+            if (result != null) return result
+        }
+        return null
+    }
 }
