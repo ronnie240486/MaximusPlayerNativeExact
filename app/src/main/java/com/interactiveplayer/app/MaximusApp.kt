@@ -20,6 +20,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 class MaximusApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        aplicarContornoSslTvAntiga()
         registerActivityLifecycleCallbacks(
             object : ActivityLifecycleCallbacks {
                 override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
@@ -37,6 +38,37 @@ class MaximusApp : Application() {
                 override fun onActivityDestroyed(activity: Activity) {}
             },
         )
+    }
+
+    /**
+     * Bug real: TV boxes com Android antigo (abaixo da versão 8 / API 26,
+     * típico das "Mxq" genéricas) davam "falha de conexão" -- o firmware
+     * delas não tem os certificados raiz atuais e não fecha o handshake
+     * HTTPS com o painel (Railway nem Manus, o fallback também é HTTPS).
+     * No Ouro Pro, que roda normal na MESMA box, isso já era contornado
+     * (SSLUtils.ignoreSSL, só em SDK < 26). Todas as chamadas de rede deste
+     * app (MacPanelClient, EPG, TMDB, imagens e o próprio ExoPlayer/media3)
+     * usam HttpURLConnection, então ajustar o SSLSocketFactory padrão aqui,
+     * UMA vez, na inicialização, cobre tudo. Em Android >= 26 não faz nada,
+     * então as boxes e celulares novos continuam com a validação normal.
+     */
+    private fun aplicarContornoSslTvAntiga() {
+        if (android.os.Build.VERSION.SDK_INT >= 26) return
+        try {
+            val trustAll = arrayOf<javax.net.ssl.TrustManager>(
+                object : javax.net.ssl.X509TrustManager {
+                    override fun checkClientTrusted(chain: Array<java.security.cert.X509Certificate>?, authType: String?) {}
+                    override fun checkServerTrusted(chain: Array<java.security.cert.X509Certificate>?, authType: String?) {}
+                    override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = emptyArray()
+                },
+            )
+            val ctx = javax.net.ssl.SSLContext.getInstance("TLS")
+            ctx.init(null, trustAll, java.security.SecureRandom())
+            javax.net.ssl.HttpsURLConnection.setDefaultSSLSocketFactory(ctx.socketFactory)
+            javax.net.ssl.HttpsURLConnection.setDefaultHostnameVerifier { _, _ -> true }
+        } catch (_: Exception) {
+            // Se falhar, segue sem o contorno -- o resto do app não pode cair por isso.
+        }
     }
 
     private fun hideSystemBars(activity: Activity) {
