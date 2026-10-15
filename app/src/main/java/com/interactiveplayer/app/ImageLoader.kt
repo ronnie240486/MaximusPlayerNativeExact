@@ -70,6 +70,9 @@ object ImageLoader {
 
         val options = BitmapFactory.Options().apply {
             inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, reqWidthPx, reqHeightPx)
+            // TV box antiga (Android < 8): 16 bits por pixel em vez de 32 -- metade da
+            // memória e decodifica mais rápido; nos pôsteres a diferença não se vê.
+            if (android.os.Build.VERSION.SDK_INT < 26) inPreferredConfig = Bitmap.Config.RGB_565
         }
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
     }
@@ -85,12 +88,45 @@ object ImageLoader {
         return sample
     }
 
-    private fun readBytes(url: String): ByteArray? = runCatching {
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.connectTimeout = 6000
-        connection.readTimeout = 8000
-        connection.inputStream.use { it.readBytes() }
-    }.getOrNull()
+    /**
+     * Baixa a imagem. Antes, qualquer falha (certificado, redirecionamento de
+     * http para https -- que o HttpURLConnection NÃO segue sozinho --, servidor
+     * que recusa o app sem User-Agent, timeout curto demais numa box lenta) virava
+     * "imagem em branco" sem aviso nenhum. Agora segue os redirecionamentos na mão,
+     * manda User-Agent, espera mais e tenta uma segunda vez.
+     */
+    private fun readBytes(url: String): ByteArray? {
+        repeat(2) {
+            val bytes = runCatching { fetchFollowingRedirects(url) }.getOrNull()
+            if (bytes != null && bytes.isNotEmpty()) return bytes
+        }
+        return null
+    }
+
+    private fun fetchFollowingRedirects(startUrl: String): ByteArray? {
+        var current = startUrl.trim()
+        repeat(6) {
+            val connection = URL(current).openConnection() as HttpURLConnection
+            try {
+                connection.connectTimeout = 10000
+                connection.readTimeout = 20000
+                connection.instanceFollowRedirects = false
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 9) AppleWebKit/537.36 Chrome/90 Mobile Safari/537.36")
+                connection.setRequestProperty("Accept", "image/*,*/*;q=0.8")
+                val code = connection.responseCode
+                if (code in 300..399) {
+                    val location = connection.getHeaderField("Location") ?: return null
+                    current = URL(URL(current), location).toString()
+                    return@repeat
+                }
+                if (code !in 200..299) return null
+                return connection.inputStream.use { it.readBytes() }
+            } finally {
+                connection.disconnect()
+            }
+        }
+        return null
+    }
 }
 
 /**
