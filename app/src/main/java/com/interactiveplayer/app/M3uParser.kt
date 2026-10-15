@@ -29,7 +29,7 @@ object M3uParser {
      * TV box fraca (pouca RAM) estourava a memória em "Carregando seu
      * conteúdo..." e o Android fechava o app.
      */
-    fun parse(reader: java.io.BufferedReader): List<M3uItem> {
+    fun parse(reader: java.io.BufferedReader, onProgress: ((Int) -> Unit)? = null): List<M3uItem> {
         val result = ArrayList<M3uItem>()
         var info: String? = null
         while (true) {
@@ -45,6 +45,7 @@ object M3uParser {
                     val logo = attribute(header, "tvg-logo")
                     val url = decode(line)
                     result += M3uItem(name, group, logo, url, classify(name, group), streamIdFromUrl(url))
+                    if (onProgress != null && result.size % 2000 == 0) onProgress(result.size)
                     info = null
                 }
             }

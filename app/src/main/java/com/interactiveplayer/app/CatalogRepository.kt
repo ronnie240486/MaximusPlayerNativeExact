@@ -34,6 +34,11 @@ object CatalogRepository {
     @Volatile var lastMessage: String = ""
         private set
 
+    // Texto mostrado embaixo da barra de "Carregando seu conteúdo..." -- diz em
+    // que etapa o carregamento está de verdade (os 90% da barra são só uma
+    // animação). Serve pra saber onde trava numa TV box lenta.
+    @Volatile var progressText: String = ""
+
     /**
      * Stale-while-revalidate: se já tiver algo salvo em disco de uma
      * abertura anterior, devolve isso na hora (a Home pinta instantâneo)
@@ -67,10 +72,12 @@ object CatalogRepository {
                     }
                 }
                 CrashLog.mark(context, "2 baixando a lista do servidor")
+                progressText = "Baixando a lista do painel…"
                 val result = fetch(context)
                 if (result.isNotEmpty()) {
                     cached = result
                     CrashLog.mark(context, "4 gravando cache (${result.size} itens)")
+                    progressText = "Gravando ${result.size} itens no aparelho…"
                     writeDiskCache(context, result)
                 }
                 CrashLog.mark(context, "ok")
@@ -114,6 +121,7 @@ object CatalogRepository {
             lastMessage = "Playlist M3U carregada."
             return direct
         }
+        progressText = "Lista M3U vazia — tentando o catálogo Xtream…"
         val xtream = fetchXtreamParallel(context, playlist.url)
         if (xtream.isNotEmpty()) {
             lastMessage = "Catálogo Xtream carregado pelo painel."
@@ -152,7 +160,9 @@ object CatalogRepository {
             // conteúdo...". Se a resposta não for M3U (ex.: JSON de erro),
             // não tem nenhum #EXTINF e o resultado sai vazio, caindo no
             // caminho Xtream como antes.
-            connection.inputStream.bufferedReader().use { M3uParser.parse(it) }
+            connection.inputStream.bufferedReader().use { reader ->
+                M3uParser.parse(reader) { count -> progressText = "Lendo a lista: $count itens…" }
+            }
         } finally {
             connection.disconnect()
         }

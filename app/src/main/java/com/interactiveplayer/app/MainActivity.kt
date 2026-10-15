@@ -94,6 +94,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             val cachedItems = CatalogRepository.load(this@MainActivity)
             if (cachedItems.isNotEmpty()) {
+                CatalogRepository.progressText = "Montando a tela inicial…"
                 renderCatalogHome(cachedItems)
                 dismissLoadingOverlay()
                 return@launch
@@ -101,6 +102,7 @@ class MainActivity : ComponentActivity() {
 
             val freshItems = CatalogRepository.load(this@MainActivity, force = true)
             if (freshItems.isNotEmpty()) {
+                CatalogRepository.progressText = "Montando a tela inicial…"
                 renderCatalogHome(freshItems)
             } else {
                 catalogLoadFailed = true
@@ -225,18 +227,24 @@ class MainActivity : ComponentActivity() {
     private fun animateLoadingProgress() {
         lifecycleScope.launch {
             var value = 0
-            while (value < 90 && loadingOverlay.visibility == View.VISIBLE) {
+            // Continua rodando depois dos 90% (a barra só para de subir) pra
+            // seguir mostrando em que etapa o carregamento está de verdade.
+            while (loadingOverlay.visibility == View.VISIBLE && loadingBar.progress < 100) {
                 delay(180)
-                value += (1..6).random()
-                if (value > 90) value = 90
+                if (value < 90) {
+                    value += (1..6).random()
+                    if (value > 90) value = 90
+                }
                 loadingBar.progress = value
-                loadingPercentText.setText("$value%")
+                val status = CatalogRepository.progressText
+                loadingPercentText.setText(if (status.isBlank()) "$value%" else "$value%  ·  $status")
             }
         }
     }
 
     private fun dismissLoadingOverlay() {
         if (!::loadingOverlay.isInitialized || loadingOverlay.visibility != View.VISIBLE) return
+        CatalogRepository.progressText = ""
         loadingBar.progress = 100
         loadingPercentText.setText("100%")
         loadingOverlay.animate().alpha(0f).setDuration(200).withEndAction {
