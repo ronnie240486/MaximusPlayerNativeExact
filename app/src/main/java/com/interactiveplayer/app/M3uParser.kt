@@ -19,11 +19,22 @@ data class M3uItem(
 }
 
 object M3uParser {
-    fun parse(content: String): List<M3uItem> {
-        val lines = content.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+    fun parse(content: String): List<M3uItem> = parse(content.reader().buffered())
+
+    /**
+     * Lê a playlist linha por linha, direto do stream. Antes o app lia a
+     * playlist INTEIRA numa String e ainda montava uma segunda lista com
+     * TODAS as linhas (cópias aparadas) antes de começar -- em playlist
+     * grande (100 mil+ itens) isso é 3x o tamanho do arquivo na memória, e
+     * TV box fraca (pouca RAM) estourava a memória em "Carregando seu
+     * conteúdo..." e o Android fechava o app.
+     */
+    fun parse(reader: java.io.BufferedReader): List<M3uItem> {
         val result = ArrayList<M3uItem>()
         var info: String? = null
-        for (line in lines) {
+        while (true) {
+            val line = (reader.readLine() ?: break).trim()
+            if (line.isEmpty()) continue
             when {
                 line.startsWith("#EXTINF", ignoreCase = true) -> info = line
                 line.startsWith("#") -> Unit

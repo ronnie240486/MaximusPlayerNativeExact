@@ -25,7 +25,10 @@ object CatalogRepository {
     // podia deixar categoria adulta aparecer dentro da aba Kids
     // (mesmo que trancada) porque a exclusao so valia pra perfil
     // infantil, nao pro modo Kids em si. Forca reclassificar tudo.
-    private const val CACHE_KEY = "items_json_v4"
+    // _v5: o cache saiu do SharedPreferences (texto gigante na memória,
+    // estourava em TV box fraca) e virou arquivo gravado em streaming.
+    // Quem já tinha o app instalado busca a lista de novo uma vez.
+    private const val CACHE_FILE = "catalog_cache_v5.json"
 
     @Volatile private var cached: List<M3uItem> = emptyList()
     @Volatile var lastMessage: String = ""
@@ -76,7 +79,8 @@ object CatalogRepository {
     fun clear(context: Context) {
         cached = emptyList()
         lastMessage = ""
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
+        runCatching { cacheFile(context).delete() }
+        deleteOldPrefsCache(context)
     }
 
     private fun fetch(context: Context): List<M3uItem> {
@@ -132,11 +136,20 @@ object CatalogRepository {
             setRequestProperty("Accept", "audio/x-mpegurl, application/vnd.apple.mpegurl, text/plain, application/json, */*")
             setRequestProperty("Referer", rawUrl)
         }
-        val code = connection.responseCode
-        val text = (if (code in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
-        connection.disconnect()
-        if (code !in 200..299) return@runCatching emptyList()
-        if (text.contains("#EXTINF", true) || text.contains("#EXTM3U", true)) M3uParser.parse(text) else emptyList()
+        try {
+            val code = connection.responseCode
+            if (code !in 200..299) return@runCatching emptyList<M3uItem>()
+            // Lê e interpreta linha por linha direto do stream (nada de
+            // readText() da playlist inteira): numa TV box com pouca RAM,
+            // segurar a playlist toda numa String + a lista de linhas
+            // estourava a memória e o app fechava em "Carregando seu
+            // conteúdo...". Se a resposta não for M3U (ex.: JSON de erro),
+            // não tem nenhum #EXTINF e o resultado sai vazio, caindo no
+            // caminho Xtream como antes.
+            connection.inputStream.bufferedReader().use { M3uParser.parse(it) }
+        } finally {
+            connection.disconnect()
+        }
     }.getOrDefault(emptyList())
 
     /**
@@ -258,42 +271,83 @@ object CatalogRepository {
 
     // --- cache em disco: pinta a Home instantâneo nas aberturas seguintes ---
 
+    // O cache agora é um ARQUIVO gravado/lido em streaming (JsonWriter /
+    // JsonReader), não mais uma String gigante no SharedPreferences. Antes
+    // o app montava um JSONArray com um JSONObject por item, depois
+    // chamava toString() (mais uma cópia inteira) e ainda entregava isso ao
+    // SharedPreferences, que segura tudo na memória -- em lista grande, numa
+    // TV box com pouca RAM, isso estourava a memória no fim do
+    // "Carregando seu conteúdo..." e o Android fechava o app.
+    private fun cacheFile(context: Context) = java.io.File(context.filesDir, CACHE_FILE)
+
     private fun readDiskCache(context: Context): List<M3uItem> = runCatching {
-        val raw = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(CACHE_KEY, null) ?: return emptyList()
-        val array = JSONArray(raw)
-        (0 until array.length()).mapNotNull { index ->
-            val obj = array.optJSONObject(index) ?: return@mapNotNull null
-            val kind = runCatching { M3uItem.Kind.valueOf(obj.optString("kind")) }.getOrDefault(M3uItem.Kind.CHANNEL)
-            M3uItem(
-                name = obj.optString("name"),
-                group = obj.optString("group"),
-                logo = obj.optString("logo").ifBlank { null },
-                url = obj.optString("url"),
-                kind = kind,
-                streamId = obj.optStringOrNull("streamId"),
-            )
+        val file = cacheFile(context)
+        if (!file.exists()) return@runCatching emptyList<M3uItem>()
+        android.util.JsonReader(java.io.InputStreamReader(java.io.FileInputStream(file), Charsets.UTF_8).buffered()).use { reader ->
+            val items = ArrayList<M3uItem>()
+            reader.beginArray()
+            while (reader.hasNext()) {
+                var name = ""
+                var group = ""
+                var logo: String? = null
+                var url = ""
+                var kindName = ""
+                var streamId: String? = null
+                reader.beginObject()
+                while (reader.hasNext()) {
+                    when (reader.nextName()) {
+                        "name" -> name = reader.nextString()
+                        "group" -> group = reader.nextString()
+                        "logo" -> logo = reader.nextString().ifBlank { null }
+                        "url" -> url = reader.nextString()
+                        "kind" -> kindName = reader.nextString()
+                        "streamId" -> streamId = reader.nextString().ifBlank { null }
+                        else -> reader.skipValue()
+                    }
+                }
+                reader.endObject()
+                val kind = runCatching { M3uItem.Kind.valueOf(kindName) }.getOrDefault(M3uItem.Kind.CHANNEL)
+                items += M3uItem(name, group, logo, url, kind, streamId)
+            }
+            reader.endArray()
+            items
         }
     }.getOrDefault(emptyList())
 
     private fun writeDiskCache(context: Context, items: List<M3uItem>) {
         runCatching {
-            val array = JSONArray()
-            items.forEach { item ->
-                array.put(
-                    JSONObject().apply {
-                        put("name", item.name)
-                        put("group", item.group)
-                        put("logo", item.logo ?: "")
-                        put("url", item.url)
-                        put("kind", item.kind.name)
-                        put("streamId", item.streamId ?: "")
-                    }
-                )
+            val file = cacheFile(context)
+            // Grava num arquivo temporário e só troca no fim: se o app for
+            // fechado no meio da gravação, não sobra um cache pela metade.
+            val tmp = java.io.File(file.parentFile, "$CACHE_FILE.tmp")
+            android.util.JsonWriter(java.io.OutputStreamWriter(java.io.FileOutputStream(tmp), Charsets.UTF_8).buffered()).use { writer ->
+                writer.beginArray()
+                for (item in items) {
+                    writer.beginObject()
+                    writer.name("name").value(item.name)
+                    writer.name("group").value(item.group)
+                    writer.name("logo").value(item.logo ?: "")
+                    writer.name("url").value(item.url)
+                    writer.name("kind").value(item.kind.name)
+                    writer.name("streamId").value(item.streamId ?: "")
+                    writer.endObject()
+                }
+                writer.endArray()
             }
-            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .edit()
-                .putString(CACHE_KEY, array.toString())
-                .apply()
+            if (!tmp.renameTo(file)) {
+                file.delete()
+                tmp.renameTo(file)
+            }
+            deleteOldPrefsCache(context)
+        }
+    }
+
+    // Apaga o cache antigo (SharedPreferences) direto pelo arquivo, SEM
+    // abrir o SharedPreferences -- abrir carregaria de uma vez aquele texto
+    // gigante na memória, que é justamente o que queremos evitar.
+    private fun deleteOldPrefsCache(context: Context) {
+        runCatching {
+            java.io.File(context.applicationInfo.dataDir, "shared_prefs/$PREFS_NAME.xml").delete()
         }
     }
 }
