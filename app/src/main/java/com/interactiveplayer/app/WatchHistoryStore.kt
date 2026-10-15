@@ -50,7 +50,8 @@ object WatchHistoryStore {
                     )
                 }
             }
-        }.getOrDefault(emptyList())
+            // Conteúdo adulto que ficou salvo de antes nunca aparece.
+        }.getOrDefault(emptyList()).filterNot { AdultContent.isAdult(it.name, it.group) }
     }
 
     /**

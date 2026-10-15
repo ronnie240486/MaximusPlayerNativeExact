@@ -47,7 +47,7 @@ object FavoriteStore {
                     ))
                 }
             }
-        }.getOrDefault(emptyList())
+        }.getOrDefault(emptyList()).filterNot { AdultContent.isAdult(it.name, it.group) }
         cache = loaded
         return loaded
     }
