@@ -160,8 +160,29 @@ object CatalogRepository {
             // conteúdo...". Se a resposta não for M3U (ex.: JSON de erro),
             // não tem nenhum #EXTINF e o resultado sai vazio, caindo no
             // caminho Xtream como antes.
-            connection.inputStream.bufferedReader().use { reader ->
-                M3uParser.parse(reader) { count -> progressText = "Lendo a lista: $count itens…" }
+            // Conta os bytes que já chegaram pra mostrar na tela se o que
+            // está lento é a internet (MB quase parados) ou o processador
+            // da box (MB subindo, itens subindo devagar).
+            var bytes = 0L
+            val startedAt = System.currentTimeMillis()
+            val counting = object : java.io.FilterInputStream(connection.inputStream) {
+                override fun read(): Int {
+                    val r = super.read()
+                    if (r >= 0) bytes++
+                    return r
+                }
+
+                override fun read(b: ByteArray, off: Int, len: Int): Int {
+                    val r = super.read(b, off, len)
+                    if (r > 0) bytes += r
+                    return r
+                }
+            }
+            counting.bufferedReader().use { reader ->
+                M3uParser.parse(reader) { count ->
+                    val seconds = (System.currentTimeMillis() - startedAt) / 1000
+                    progressText = "Lendo a lista: $count itens (${bytes / 1048576} MB, ${seconds}s)…"
+                }
             }
         } finally {
             connection.disconnect()
