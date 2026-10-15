@@ -58,17 +58,22 @@ object CatalogRepository {
             if (!force && cached.isNotEmpty()) return@withLock cached
             withContext(Dispatchers.IO) {
                 if (!force) {
+                    CrashLog.mark(context, "1 lendo cache salvo no aparelho")
                     val fromDisk = readDiskCache(context)
                     if (fromDisk.isNotEmpty()) {
                         cached = fromDisk
+                        CrashLog.mark(context, "ok")
                         return@withContext fromDisk
                     }
                 }
+                CrashLog.mark(context, "2 baixando a lista do servidor")
                 val result = fetch(context)
                 if (result.isNotEmpty()) {
                     cached = result
+                    CrashLog.mark(context, "4 gravando cache (${result.size} itens)")
                     writeDiskCache(context, result)
                 }
+                CrashLog.mark(context, "ok")
                 result
             }
         }
@@ -105,6 +110,7 @@ object CatalogRepository {
 
         val direct = fetchM3u(playlist.url)
         if (direct.isNotEmpty()) {
+            CrashLog.mark(context, "3 lista M3U lida (${direct.size} itens)")
             lastMessage = "Playlist M3U carregada."
             return direct
         }

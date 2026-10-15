@@ -21,6 +21,7 @@ class MaximusApp : Application() {
     override fun onCreate() {
         super.onCreate()
         aplicarContornoSslTvAntiga()
+        CrashLog.install(this)
         registerActivityLifecycleCallbacks(
             object : ActivityLifecycleCallbacks {
                 override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
@@ -29,13 +30,18 @@ class MaximusApp : Application() {
 
                 override fun onActivityResumed(activity: Activity) {
                     hideSystemBars(activity)
+                    // Se o app fechou sozinho na vez anterior, mostra o motivo.
+                    CrashLog.showPendingReport(activity)
                 }
 
                 override fun onActivityStarted(activity: Activity) {}
                 override fun onActivityPaused(activity: Activity) {}
                 override fun onActivityStopped(activity: Activity) {}
                 override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
-                override fun onActivityDestroyed(activity: Activity) {}
+                override fun onActivityDestroyed(activity: Activity) {
+                    // Saiu da Home de propósito (botão voltar): não é crash.
+                    if (activity is MainActivity && activity.isFinishing) CrashLog.mark(activity, "ok")
+                }
             },
         )
     }
