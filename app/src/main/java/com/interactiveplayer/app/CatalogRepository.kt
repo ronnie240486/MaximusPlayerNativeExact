@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -28,7 +29,7 @@ object CatalogRepository {
     // _v5: o cache saiu do SharedPreferences (texto gigante na memória,
     // estourava em TV box fraca) e virou arquivo gravado em streaming.
     // Quem já tinha o app instalado busca a lista de novo uma vez.
-    private const val CACHE_FILE = "catalog_cache_v5.json"
+    private const val CACHE_FILE = "catalog_cache_v6.txt"
 
     @Volatile private var cached: List<M3uItem> = emptyList()
     @Volatile var lastMessage: String = ""
@@ -76,13 +77,23 @@ object CatalogRepository {
                 val result = fetch(context)
                 if (result.isNotEmpty()) {
                     cached = result
-                    CrashLog.mark(context, "4 gravando cache (${result.size} itens)")
-                    progressText = "Gravando ${result.size} itens no aparelho…"
-                    writeDiskCache(context, result)
+                    // A Home abre AGORA. O cache em disco (só serve pra próxima
+                    // abertura ser instantânea) é gravado em segundo plano, fora
+                    // do caminho -- antes a tela esperava a gravação terminar,
+                    // e em lista de 200 mil itens isso segurava a abertura.
+                    saveCacheInBackground(context.applicationContext, result)
                 }
                 CrashLog.mark(context, "ok")
                 result
             }
+        }
+    }
+
+    private val backgroundScope = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
+
+    private fun saveCacheInBackground(appContext: Context, items: List<M3uItem>) {
+        backgroundScope.launch {
+            writeDiskCache(appContext, items)
         }
     }
 
@@ -317,66 +328,68 @@ object CatalogRepository {
     // "Carregando seu conteúdo..." e o Android fechava o app.
     private fun cacheFile(context: Context) = java.io.File(context.filesDir, CACHE_FILE)
 
-    private fun readDiskCache(context: Context): List<M3uItem> = runCatching {
-        val file = cacheFile(context)
-        if (!file.exists()) return@runCatching emptyList<M3uItem>()
-        android.util.JsonReader(java.io.InputStreamReader(java.io.FileInputStream(file), Charsets.UTF_8).buffered()).use { reader ->
-            val items = ArrayList<M3uItem>()
-            reader.beginArray()
-            while (reader.hasNext()) {
-                var name = ""
-                var group = ""
-                var logo: String? = null
-                var url = ""
-                var kindName = ""
-                var streamId: String? = null
-                reader.beginObject()
-                while (reader.hasNext()) {
-                    when (reader.nextName()) {
-                        "name" -> name = reader.nextString()
-                        "group" -> group = reader.nextString()
-                        "logo" -> logo = reader.nextString().ifBlank { null }
-                        "url" -> url = reader.nextString()
-                        "kind" -> kindName = reader.nextString()
-                        "streamId" -> streamId = reader.nextString().ifBlank { null }
-                        else -> reader.skipValue()
-                    }
-                }
-                reader.endObject()
-                val kind = runCatching { M3uItem.Kind.valueOf(kindName) }.getOrDefault(M3uItem.Kind.CHANNEL)
-                items += M3uItem(name, group, logo, url, kind, streamId)
-            }
-            reader.endArray()
-            items
-        }
-    }.getOrDefault(emptyList())
+    private fun readDiskCache(context: Context): List<M3uItem> =
+        runCatching { readCacheFrom(cacheFile(context)) }.getOrDefault(emptyList())
 
     private fun writeDiskCache(context: Context, items: List<M3uItem>) {
         runCatching {
-            val file = cacheFile(context)
-            // Grava num arquivo temporário e só troca no fim: se o app for
-            // fechado no meio da gravação, não sobra um cache pela metade.
-            val tmp = java.io.File(file.parentFile, "$CACHE_FILE.tmp")
-            android.util.JsonWriter(java.io.OutputStreamWriter(java.io.FileOutputStream(tmp), Charsets.UTF_8).buffered()).use { writer ->
-                writer.beginArray()
-                for (item in items) {
-                    writer.beginObject()
-                    writer.name("name").value(item.name)
-                    writer.name("group").value(item.group)
-                    writer.name("logo").value(item.logo ?: "")
-                    writer.name("url").value(item.url)
-                    writer.name("kind").value(item.kind.name)
-                    writer.name("streamId").value(item.streamId ?: "")
-                    writer.endObject()
-                }
-                writer.endArray()
-            }
-            if (!tmp.renameTo(file)) {
-                file.delete()
-                tmp.renameTo(file)
-            }
+            writeCacheTo(cacheFile(context), items)
             deleteOldPrefsCache(context)
         }
+    }
+
+    // Formato: uma linha por item, campos separados por TAB (nome, grupo, logo,
+    // url, tipo, streamId). Bem mais rápido e leve que JSON em lista de 200 mil
+    // itens: uma única escrita por linha, sem escapar caractere por caractere.
+    // TAB/quebra de linha dentro de um campo viram espaço.
+    internal fun writeCacheTo(file: java.io.File, items: List<M3uItem>) {
+        // Grava num arquivo temporário e só troca no fim: se o app for fechado
+        // no meio da gravação, não sobra um cache pela metade.
+        val tmp = java.io.File(file.parentFile, "${file.name}.tmp")
+        java.io.BufferedWriter(java.io.OutputStreamWriter(java.io.FileOutputStream(tmp), Charsets.UTF_8), 64 * 1024).use { w ->
+            val sb = StringBuilder(512)
+            for (item in items) {
+                sb.setLength(0)
+                sb.append(clean(item.name)).append('\t')
+                    .append(clean(item.group)).append('\t')
+                    .append(clean(item.logo ?: "")).append('\t')
+                    .append(clean(item.url)).append('\t')
+                    .append(item.kind.name).append('\t')
+                    .append(clean(item.streamId ?: "")).append('\n')
+                w.write(sb.toString())
+            }
+            w.write("#END\n")
+        }
+        if (!tmp.renameTo(file)) {
+            file.delete()
+            tmp.renameTo(file)
+        }
+    }
+
+    private fun clean(value: String): String =
+        if (value.indexOf('\t') < 0 && value.indexOf('\n') < 0 && value.indexOf('\r') < 0) value
+        else value.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
+
+    internal fun readCacheFrom(file: java.io.File): List<M3uItem> {
+        if (!file.exists()) return emptyList()
+        val items = ArrayList<M3uItem>()
+        val groups = HashMap<String, String>()
+        var complete = false
+        java.io.BufferedReader(java.io.InputStreamReader(java.io.FileInputStream(file), Charsets.UTF_8), 64 * 1024).use { r ->
+            while (true) {
+                val line = r.readLine() ?: break
+                if (line == "#END") { complete = true; break }
+                val parts = line.split('\t')
+                if (parts.size < 6) continue
+                val group = groups.getOrPut(parts[1]) { parts[1] }
+                val kind = runCatching { M3uItem.Kind.valueOf(parts[4]) }.getOrDefault(M3uItem.Kind.CHANNEL)
+                items += M3uItem(
+                    parts[0], group, parts[2].ifBlank { null }, parts[3], kind, parts[5].ifBlank { null },
+                )
+            }
+        }
+        // Cache sem a marca final = gravação interrompida: ignora e baixa de novo.
+        return if (complete) items else emptyList()
     }
 
     // Apaga o cache antigo (SharedPreferences) direto pelo arquivo, SEM
